@@ -2,49 +2,57 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#111827">
-  <meta name="description" content="ClipControl: registro semanal de clips, vistas, redes y pagos.">
-  <title>ClipControl</title>
-  <link rel="stylesheet" href="./styles.css?v=1.5.1">
+  <meta name="description" content="ClipControl: control de clips, métricas, reportes y pagos por plataforma.">
+  <title>ClipControl · Control Center</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css?v=2.1.0">
 </head>
 <body>
   <section id="loginView" class="login-view">
     <div class="login-hero">
-      <div class="brand">
+      <div class="login-orb orb-a"></div><div class="login-orb orb-b"></div>
+      <div class="brand login-brand">
         <div class="brand-mark ninja-mark">🥷</div>
-        <div><strong>ClipControl</strong><span>Gestión semanal de cliperos</span></div>
+        <div><strong>ClipControl</strong><span>Control Center</span></div>
       </div>
       <div class="hero-copy">
-        <p class="eyebrow" style="color:#a5b4fc">REGISTRO • CONTROL • RESULTADOS</p>
-        <h1>Clips, métricas y pagos en un solo lugar.</h1>
-        <p>Registra enlaces, revisa resultados y administra el trabajo semanal.</p>
-        <div class="hero-tags">
-          <span class="hero-tag hero-tag-brand hero-tiktok"><span class="hero-tag-icon">♪</span>TikTok</span><span class="hero-tag hero-tag-brand hero-instagram"><span class="hero-tag-icon">◎</span>Instagram</span>
-          <span class="hero-tag hero-tag-brand hero-youtube"><span class="hero-tag-icon">▶</span>YouTube</span><span class="hero-tag hero-tag-brand hero-facebook"><span class="hero-tag-icon">f</span>Facebook</span>
+        <span class="eyebrow hero-eyebrow">MÉTRICAS · REPORTES · PAGOS</span>
+        <h1>Tu contenido,<br><span>claramente medido.</span></h1>
+        <p>Registra tus videos, revisa su rendimiento y controla cada período desde una sola plataforma.</p>
+        <div class="hero-live-grid" aria-hidden="true">
+          <div class="hero-live-card"><span class="hero-platform tiktok-dot"></span><small>TikTok</small><b>+32.5K</b><em>vistas</em></div>
+          <div class="hero-live-card"><span class="hero-platform youtube-dot"></span><small>YouTube</small><b>+18.2K</b><em>vistas</em></div>
+          <div class="hero-live-card"><span class="hero-platform instagram-dot"></span><small>Instagram</small><b>+7.8K</b><em>alcance</em></div>
         </div>
       </div>
-      <small style="position:relative;z-index:1;color:#94a3b8">Fechas del servidor · Historial semanal · Acceso por roles</small>
+      <div class="hero-bottom"><span class="live-pulse"></span> Información sincronizada con tu panel</div>
     </div>
+
     <div class="login-pane">
       <div class="login-card">
-        <p class="eyebrow">ACCESO SEGURO</p>
-        <h2>Ingresa a tu panel</h2>
-        <p>Utiliza el usuario y la contraseña entregados por administración. Los administradores también pueden ingresar con su correo.</p>
-        <form id="loginForm" class="stack">
-          <label>Usuario o correo
+        <div class="login-card-icon">🥷</div>
+        <span class="eyebrow">ACCESO</span>
+        <h2>Bienvenido</h2>
+        <p>Ingresa con las credenciales entregadas por administración.</p>
+        <form id="loginForm" class="stack login-form">
+          <label><span>Usuario o correo</span>
             <input id="loginUser" autocomplete="username" required placeholder="Ejemplo: clipero01">
           </label>
-          <label>Contraseña
+          <label><span>Contraseña</span>
             <div class="password-wrap">
               <input id="loginPass" type="password" autocomplete="current-password" required placeholder="Tu contraseña">
-              <button id="showPass" type="button" class="icon-btn" aria-label="Mostrar contraseña">👁️</button>
+              <button id="showPass" type="button" class="icon-btn" aria-label="Mostrar contraseña">👁</button>
             </div>
           </label>
-          <button id="loginBtn" class="btn btn-primary btn-block" type="submit">Ingresar</button>
+          <button id="loginBtn" class="btn btn-primary btn-block btn-login" type="submit"><span>Ingresar</span><b>→</b></button>
         </form>
-        <div class="connection-box"><span id="connectionDot" class="connection-dot"></span><span id="connectionText">Configuración de Supabase cargada</span></div>
+        <div class="connection-box"><span id="connectionDot" class="connection-dot"></span><span id="connectionText">Preparando conexión segura</span></div>
       </div>
+      <small class="login-foot">ClipControl 2.1 PRO · Acceso privado</small>
     </div>
   </section>
 
@@ -60,27 +68,41 @@
           <div id="miniAvatar" class="avatar">🥷</div>
           <div><strong id="miniName">Usuario</strong><span id="miniRole">Clipero</span></div>
         </div>
-        <button id="logoutBtn" class="btn btn-ghost" style="color:#fff;border-color:rgba(255,255,255,.15)">Salir</button>
+        <button id="logoutBtn" class="btn side-logout" type="button">Salir <span>↗</span></button>
       </div>
     </aside>
+
     <main class="main">
       <header class="topbar">
-        <div style="display:flex;align-items:center;gap:12px">
+        <div class="topbar-left">
           <button id="menuBtn" class="menu-btn" aria-label="Abrir menú">☰</button>
-          <div><h1 id="pageTitle">Panel</h1><p id="pageSubtitle"></p></div>
+          <div class="page-heading"><h1 id="pageTitle">Panel</h1><p id="pageSubtitle"></p></div>
         </div>
-        <div class="top-actions"><span id="weekBadge" class="week-badge"></span><button id="refreshBtn" class="btn btn-secondary"><span>Actualizar</span> ↻</button></div>
+        <div class="top-actions">
+          <span id="weekBadge" class="week-badge"></span>
+          <button id="noticeBtn" class="icon-action notice-action" type="button" title="Avisos" aria-label="Avisos">🔔<span id="noticeBadge" class="notice-badge hidden">0</span></button>
+          <button id="themeBtn" class="icon-action" type="button" title="Cambiar tema" aria-label="Cambiar tema">◐</button>
+          <button id="refreshBtn" class="btn btn-secondary refresh-action" type="button"><span>Actualizar</span> ↻</button>
+        </div>
       </header>
       <div id="content" class="content"></div>
     </main>
+
+    <nav id="mobileNav" class="mobile-nav" aria-label="Navegación móvil"></nav>
   </section>
 
   <div id="modalLayer" class="modal-layer"></div>
   <div id="toast" class="toast"></div>
-  <div id="loading" class="loading-overlay hidden"><div class="loader"></div></div>
+  <div id="loading" class="loading-overlay hidden" aria-live="polite">
+    <div class="loading-card">
+      <div class="loading-ninja">🥷</div>
+      <div class="loading-copy"><b>ClipControl</b><span>Actualizando información…</span></div>
+      <div class="loading-bars"><i></i><i></i><i></i></div>
+    </div>
+  </div>
 
   <script src="https://unpkg.com/@supabase/supabase-js@2.95.0"></script>
-  <script src="./supabase-config.js?v=1.5.1"></script>
-  <script src="./app.js?v=1.5.1"></script>
+  <script src="./supabase-config.js?v=2.1.0"></script>
+  <script src="./app.js?v=2.1.0"></script>
 </body>
 </html>

@@ -1,21 +1,24 @@
-CLIPCONTROL 1.5.1 - PAQUETE RAIZ PARA NETLIFY
+CLIPCONTROL 2.1 PRO - NETLIFY
 
-IMPORTANTE:
-Sube ESTOS ARCHIVOS DIRECTAMENTE a la raíz del repositorio de GitHub.
-No subas la carpeta contenedora como una carpeta adicional.
+SUBE A LA RAIZ DEL REPOSITORIO:
+index.html
+styles.css
+app.js
+supabase-config.js
+_redirects
+netlify.toml
 
-En la raíz del repositorio deben verse juntos:
-- index.html
-- styles.css
-- app.js
-- supabase-config.js
-- netlify.toml
-- _redirects
+NETLIFY:
+Branch: main
+Base directory: VACIO
+Build command: VACIO
+Publish directory: .
 
-Configuración Netlify:
-- Base directory: vacío
-- Build command: vacío
-- Publish directory: .
-- Production branch: main
+ANTES DE PUBLICAR LA WEB 2.1:
+1) Ejecutar SQL 18.
+2) Desplegar bright-processor/index.ts 2.1.
+3) Ejecutar SQL 19 una sola vez.
+4) Ejecutar SQL 20 para verificar.
 
-Luego usa Deploys > Trigger deploy > Clear cache and deploy site.
+NO cambiar CRON_SECRET.
+NO crear una segunda Edge Function.

@@ -1,0 +1,3 @@
+ClipControl 2.1 PRO
+Base requerida: ClipControl 2.0 / 2.0.1 con SQL 16 ya aplicado
+Actualización: SQL 18 + bright-processor 2.1 + SQL 19 + SQL 20 + WEB 2.1
