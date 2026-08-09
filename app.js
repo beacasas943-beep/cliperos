@@ -305,6 +305,7 @@
   }
 
   async function init() {
+    setAuthenticatedShell(false);
     try {
       const cfg = window.CLIPCONTROL_SUPABASE;
       if (!cfg?.url || !cfg?.publishableKey || !window.supabase) {
@@ -402,20 +403,48 @@
     showLoading(false);
   }
 
+  function setAuthenticatedShell(authenticated) {
+    const isAuthenticated = Boolean(authenticated);
+    const loginView = $("#loginView");
+    const appView = $("#appView");
+
+    document.body.classList.toggle("is-authenticated", isAuthenticated);
+    document.body.classList.toggle("is-login", !isAuthenticated);
+
+    if (loginView) {
+      loginView.hidden = isAuthenticated;
+      loginView.classList.toggle("hidden", isAuthenticated);
+      loginView.setAttribute("aria-hidden", isAuthenticated ? "true" : "false");
+      // Inline !important prevents any future visual rule from reviving the login
+      // after a successful authentication.
+      loginView.style.setProperty("display", isAuthenticated ? "none" : "grid", "important");
+      loginView.style.setProperty("visibility", isAuthenticated ? "hidden" : "visible", "important");
+      loginView.style.setProperty("pointer-events", isAuthenticated ? "none" : "auto", "important");
+    }
+
+    if (appView) {
+      appView.hidden = !isAuthenticated;
+      appView.classList.toggle("hidden", !isAuthenticated);
+      appView.setAttribute("aria-hidden", isAuthenticated ? "false" : "true");
+      // The private application shell is explicitly removed while logged out.
+      appView.style.setProperty("display", isAuthenticated ? "block" : "none", "important");
+      appView.style.setProperty("visibility", isAuthenticated ? "visible" : "hidden", "important");
+      appView.style.setProperty("pointer-events", isAuthenticated ? "auto" : "none", "important");
+    }
+  }
+
   function showLogin() {
-    $("#loginView").classList.remove("hidden");
-    $("#appView").classList.add("hidden");
+    setAuthenticatedShell(false);
     closeModal();
   }
 
   function showApp() {
-    $("#loginView").classList.add("hidden");
-    $("#appView").classList.remove("hidden");
+    setAuthenticatedShell(true);
     const p = state.profile;
     $("#sideRole").textContent = p.role === "clipper" ? "Portal del clipero" : "Administración";
     $("#miniName").textContent = p.names || p.username;
     $("#miniRole").textContent = p.role === "superadmin" ? "Superadministrador" : p.role === "admin" ? "Administrador" : "Clipero";
-    $("#miniAvatar").textContent = "🥷";
+    $("#miniAvatar").innerHTML = uiIcon("user",18);
     buildNav();
   }
 
@@ -1123,8 +1152,8 @@
     setHeader("Administrar usuarios", "Crea accesos y revisa a cada clipero.");
     const clippers = await query(state.supabase.from("admin_clipper_overview").select("*").eq("role", "clipper").order("username", { ascending: true }));
     const tableRows = clippers.map((c) => `<tr><td><b>@${esc(c.username)}</b><br><small class="muted">${c.names ? esc(`${c.names} ${c.surnames || ""}`) : "Registro pendiente"}</small></td><td>${c.phone ? `📱 ${esc(c.phone)}` : '<span class="pill pill-yellow">Por completar</span>'}</td><td class="link-cell">${c.primary_social_url ? `<a href="${esc(c.primary_social_url)}" target="_blank" rel="noopener">Abrir cuenta</a>` : '<span class="muted">Sin registrar</span>'}</td><td>${c.active_social_accounts}</td><td>${dateOnlyLabel(c.latest_report_week)}</td><td><span class="pill ${c.active ? "pill-green" : "pill-red"}">${c.active ? "Activo" : "Suspendido"}</span></td><td><button class="btn btn-secondary btn-sm" data-open-clipper="${c.user_id}">Administrar</button></td></tr>`).join("");
-    const cards = clippers.map((c) => `<button class="clipper-access-card" data-open-clipper="${c.user_id}"><div class="clipper-access-top"><span class="avatar">🥷</span><div><strong>${c.names ? esc(`${c.names} ${c.surnames || ""}`) : `@${esc(c.username)}`}</strong><small>@${esc(c.username)}</small></div><span class="pill ${c.active ? "pill-green" : "pill-red"}">${c.active ? "Activo" : "Suspendido"}</span></div><div class="clipper-access-info"><span><small>WhatsApp</small><b>${esc(c.phone || "Pendiente")}</b></span><span><small>Redes</small><b>${c.active_social_accounts}</b></span><span><small>Último reporte</small><b>${dateOnlyLabel(c.latest_report_week)}</b></span></div><div class="clipper-access-action">Administrar →</div></button>`).join("");
-    $("#content").innerHTML = `<div class="card compact-card"><div class="card-head"><div><h2>Cliperos</h2><p>${clippers.length} usuarios registrados</p></div><button id="createClipperBtn" class="btn btn-primary">＋ Crear acceso</button></div>
+    const cards = clippers.map((c) => `<button class="clipper-access-card" data-open-clipper="${c.user_id}"><div class="clipper-access-top"><span class="avatar">${uiIcon("user",18)}</span><div><strong>${c.names ? esc(`${c.names} ${c.surnames || ""}`) : `@${esc(c.username)}`}</strong><small>@${esc(c.username)}</small></div><span class="pill ${c.active ? "pill-green" : "pill-red"}">${c.active ? "Activo" : "Suspendido"}</span></div><div class="clipper-access-info"><span><small>WhatsApp</small><b>${esc(c.phone || "Pendiente")}</b></span><span><small>Redes</small><b>${c.active_social_accounts}</b></span><span><small>Último reporte</small><b>${dateOnlyLabel(c.latest_report_week)}</b></span></div><div class="clipper-access-action">Administrar →</div></button>`).join("");
+    $("#content").innerHTML = `<div class="card compact-card"><div class="card-head"><div><h2>Cliperos</h2><p>${clippers.length} usuarios registrados</p></div><button id="createClipperBtn" class="btn btn-primary">${uiIcon("plus",15)} Crear acceso</button></div>
       ${clippers.length ? `<div class="desktop-clipper-table table-wrap compact-table"><table><thead><tr><th>Usuario</th><th>Datos</th><th>Cuenta principal</th><th>Redes</th><th>Último reporte</th><th>Acceso</th><th></th></tr></thead><tbody>${tableRows}</tbody></table></div><div class="mobile-clipper-cards">${cards}</div>` : '<div class="empty">No hay cliperos.</div>'}</div>`;
     $("#createClipperBtn").addEventListener("click", openCreateUserModal);
     $$('[data-open-clipper]').forEach((b) => b.addEventListener("click", () => {
@@ -1141,7 +1170,7 @@
         <label>Usuario<input name="username" required minlength="3" maxlength="40" placeholder="clipero01"></label>
         <label>Contraseña asignada<input name="password" type="password" required minlength="6" placeholder="Mínimo 6 caracteres"></label>
         ${canAdmin ? `<label class="full">Rol<select name="role"><option value="clipper">Clipero</option><option value="admin">Administrador</option></select></label>` : '<input type="hidden" name="role" value="clipper">'}
-      </div><div class="alert alert-info" style="margin-top:14px"><div>🥷</div><div><strong>Registro simplificado</strong><p>El clipero ingresará nombres, apellidos, WhatsApp y el link de su cuenta principal.</p></div></div></div><div class="modal-foot"><span></span><div class="actions"><button type="button" id="createCancel" class="btn btn-ghost">Cancelar</button><button class="btn btn-primary">Crear usuario</button></div></div></form>`, "small", (layer) => {
+      </div><div class="alert alert-info compact-alert" style="margin-top:14px"><div>${uiIcon("user",16)}</div><div><strong>Acceso listo</strong><p>El clipero completa sus datos al ingresar.</p></div></div></div><div class="modal-foot"><span></span><div class="actions"><button type="button" id="createCancel" class="btn btn-ghost">Cancelar</button><button class="btn btn-primary">Crear usuario</button></div></div></form>`, "small", (layer) => {
         $("#createX", layer).addEventListener("click", closeModal);
         $("#createCancel", layer).addEventListener("click", closeModal);
         $("#createUserForm", layer).addEventListener("submit", async (event) => {
@@ -1180,7 +1209,7 @@
     const box = $("#clipperTabContent");
     const tab = state.selectedClipperTab;
     if (tab === "info") {
-      box.innerHTML = `<div class="profile-admin-grid"><div class="profile-card"><span class="avatar large-avatar">🥷</span><div><h3>${esc(profile.names || profile.username)} ${esc(profile.surnames || "")}</h3><p class="muted">@${esc(profile.username)}</p></div></div><div class="summary-list compact-summary"><div><span>WhatsApp</span><b>${esc(profile.phone || "Pendiente")}</b></div><div><span>Cuenta principal</span><b>${profile.primary_social_url ? `<a href="${esc(profile.primary_social_url)}" target="_blank">Abrir link</a>` : "Pendiente"}</b></div><div><span>Redes activas</span><b>${accounts.filter((a) => a.active).length}</b></div><div><span>Reportes</span><b>${reports.length}</b></div><div><span>Estado</span><b>${profile.active ? "Activo" : "Suspendido"}</b></div></div><div class="actions"><button id="editAdminProfile" class="btn btn-secondary">Editar datos</button></div></div>`;
+      box.innerHTML = `<div class="profile-admin-grid"><div class="profile-card"><span class="avatar large-avatar">${uiIcon("user",22)}</span><div><h3>${esc(profile.names || profile.username)} ${esc(profile.surnames || "")}</h3><p class="muted">@${esc(profile.username)}</p></div></div><div class="summary-list compact-summary"><div><span>WhatsApp</span><b>${esc(profile.phone || "Pendiente")}</b></div><div><span>Cuenta principal</span><b>${profile.primary_social_url ? `<a href="${esc(profile.primary_social_url)}" target="_blank">Abrir link</a>` : "Pendiente"}</b></div><div><span>Redes activas</span><b>${accounts.filter((a) => a.active).length}</b></div><div><span>Reportes</span><b>${reports.length}</b></div><div><span>Estado</span><b>${profile.active ? "Activo" : "Suspendido"}</b></div></div><div class="actions"><button id="editAdminProfile" class="btn btn-secondary">Editar datos</button></div></div>`;
       $("#editAdminProfile").addEventListener("click", () => openAdminEditProfile(profile));
       return;
     }
@@ -1506,7 +1535,7 @@
         <div class="formula-box" style="margin-top:10px"><b>Equivalente del administrador</b><span>Si supera la meta, el sistema muestra cuánto representaría el rendimiento sin tope y sugiere un extra opcional.</span></div>
         <div class="summary-list compact-summary" style="margin-top:12px"><div><span>Meta</span><b>${num(settings.target_views)}</b></div><div><span>Alerta</span><b>${num(settings.low_alert)}</b></div><div><span>Filas iniciales</span><b>${settings.default_slots}</b></div><div><span>Métricas</span><b>Cada 24 h</b></div></div>
         <div class="divider"></div><h3>Fecha de cierre</h3><p class="muted small">Selecciona la semana y aplica la fecha exacta desde la sección Reportes. Al iniciar una nueva semana, el panel del clipero aparece limpio y lo anterior queda en Historial.</p>
-        <div class="divider"></div><h3>Diagnóstico</h3><button id="runDiagnosticsBtn" class="btn btn-dark">🩺 Revisar sistema</button><div id="diagnosticsBox" style="margin-top:12px"></div>
+        <div class="divider"></div><h3>Diagnóstico</h3><button id="runDiagnosticsBtn" class="btn btn-dark">${uiIcon("activity",15)} Revisar sistema</button><div id="diagnosticsBox" style="margin-top:12px"></div>
       </div>
     </div>`;
     $("#runDiagnosticsBtn").addEventListener("click", runSystemDiagnostics);
@@ -1558,7 +1587,7 @@
     });
     box.innerHTML = results.map((result) => `<div class="alert ${result.ok ? "alert-success" : "alert-danger"}" style="margin-bottom:8px"><div>${result.ok ? "✓" : "✕"}</div><div><strong>${esc(result.name)}</strong><p>${esc(result.detail || "Correcto")}</p></div></div>`).join("");
     button.disabled = false;
-    button.textContent = "🩺 Ejecutar diagnóstico";
+    button.innerHTML = `${uiIcon("activity",15)} Ejecutar diagnóstico`;
   }
 
 
@@ -1670,13 +1699,12 @@
   }
 
   function showApp() {
-    $("#loginView").classList.add("hidden");
-    $("#appView").classList.remove("hidden");
+    setAuthenticatedShell(true);
     const p = state.profile;
     $("#sideRole").textContent = p.role === "clipper" ? "Portal del clipero" : "Control Center";
     $("#miniName").textContent = p.names || p.username;
     $("#miniRole").textContent = p.role === "superadmin" ? "Superadministrador" : p.role === "admin" ? "Administrador" : "Clipero";
-    $("#miniAvatar").textContent = "🥷";
+    $("#miniAvatar").innerHTML = uiIcon("user",18);
     buildNav();
   }
 
@@ -1865,7 +1893,7 @@
     const coreComplete = Boolean(p.names && p.surnames && p.phone && p.primary_social_url);
     const title = paymentRequired && coreComplete ? "Completa tus datos de pago" : "Completa tu registro";
     const subtitle = paymentRequired ? "Este dato fue solicitado por administración y es necesario para continuar." : "Solo te tomará un momento.";
-    openModal(`<div class="modal-head"><div><h2>${title}</h2><p>${subtitle}</p></div>${required ? "" : '<button id="profileX" class="modal-close">×</button>'}</div><form id="modalProfileForm"><div class="modal-body"><div class="form-grid compact-form"><label>Nombres<input name="names" required value="${esc(p.names || "")}"></label><label>Apellidos<input name="surnames" required value="${esc(p.surnames || "")}"></label><label>Celular / WhatsApp<input name="phone" required value="${esc(p.phone || "")}"></label><label>Cuenta principal<input name="primary_social_url" type="url" required value="${esc(p.primary_social_url || "")}" placeholder="https://www.tiktok.com/@usuario"></label></div><div class="payment-request-box"><h3>💳 Datos de pago ${paymentRequired ? "obligatorios" : ""}</h3><p>Yape es la opción recomendada. También puedes usar Plin, BCP, CCI u otra cuenta.</p><div class="form-grid compact-form" style="margin-top:10px"><label>Método<select name="payment_method" ${paymentRequired ? "required" : ""}>${paymentMethodOptions(p.payment_method || "")}</select></label><label>Número / cuenta<input name="payment_account" ${paymentRequired ? "required" : ""} value="${esc(p.payment_account || "")}" placeholder="987654321"></label><label class="full">Titular<input name="payment_holder" value="${esc(p.payment_holder || `${p.names || ""} ${p.surnames || ""}`.trim())}"></label></div></div>${paymentRequired ? '<div class="mandatory-note">⚠ Completa estos datos para continuar usando ClipControl.</div>' : ""}</div><div class="modal-foot"><span></span><button class="btn btn-primary">Guardar y continuar</button></div></form>`, "small", (layer) => {
+    openModal(`<div class="modal-head"><div><h2>${title}</h2><p>${subtitle}</p></div>${required ? "" : '<button id="profileX" class="modal-close">×</button>'}</div><form id="modalProfileForm"><div class="modal-body"><div class="form-grid compact-form"><label>Nombres<input name="names" required value="${esc(p.names || "")}"></label><label>Apellidos<input name="surnames" required value="${esc(p.surnames || "")}"></label><label>Celular / WhatsApp<input name="phone" required value="${esc(p.phone || "")}"></label><label>Cuenta principal<input name="primary_social_url" type="url" required value="${esc(p.primary_social_url || "")}" placeholder="https://www.tiktok.com/@usuario"></label></div><div class="payment-request-box"><h3 class="icon-title">${uiIcon("wallet",16)} Datos de pago ${paymentRequired ? "obligatorios" : ""}</h3><p>Yape es la opción recomendada. También puedes usar Plin, BCP, CCI u otra cuenta.</p><div class="form-grid compact-form" style="margin-top:10px"><label>Método<select name="payment_method" ${paymentRequired ? "required" : ""}>${paymentMethodOptions(p.payment_method || "")}</select></label><label>Número / cuenta<input name="payment_account" ${paymentRequired ? "required" : ""} value="${esc(p.payment_account || "")}" placeholder="987654321"></label><label class="full">Titular<input name="payment_holder" value="${esc(p.payment_holder || `${p.names || ""} ${p.surnames || ""}`.trim())}"></label></div></div>${paymentRequired ? '<div class="mandatory-note">${uiIcon("alert",15)} <span>Completa estos datos para continuar.</span></div>' : ""}</div><div class="modal-foot"><span></span><button class="btn btn-primary">Guardar y continuar</button></div></form>`, "small", (layer) => {
       $("#profileX", layer)?.addEventListener("click", closeModal);
       $("#modalProfileForm", layer).addEventListener("submit", saveOwnProfile);
     });
@@ -1942,8 +1970,8 @@
     const allowed = state.profile.role === "superadmin" ? users : users.filter(u => u.role === "clipper");
     const filter = state.accessRoleFilter || "clipper";
     const visible = filter === "all" ? allowed : filter === "admin" ? allowed.filter(u => ["admin","superadmin"].includes(u.role)) : allowed.filter(u => u.role === filter);
-    const cards = visible.map(u => `<div class="access-user-card" data-search-user="${esc(`${u.username} ${u.names||""} ${u.surnames||""} ${u.phone||""}`.toLowerCase())}"><div class="access-user-top"><span class="access-user-avatar">${u.role === "clipper" ? "🥷" : "🛡️"}</span><div class="access-user-id"><strong>${esc(u.names ? `${u.names} ${u.surnames||""}`.trim() : `@${u.username}`)}</strong><small>@${esc(u.username)} · ${u.role === "superadmin" ? "Superadmin" : u.role === "admin" ? "Administrador" : "Clipero"}</small></div><span class="pill ${u.active ? "pill-green" : "pill-red"}">${u.active ? "Activo" : "Suspendido"}</span></div><div class="access-user-meta"><div><span>WhatsApp</span><b>${esc(u.phone || "Pendiente")}</b></div><div><span>${u.role === "clipper" ? "Pago" : "Creado"}</span><b class="${u.role === "clipper" ? (u.payment_account ? "payment-ready" : "payment-missing") : ""}">${u.role === "clipper" ? (u.payment_account ? paymentMethodLabel(u.payment_method) : "Pendiente") : dateOnlyLabel(u.created_at)}</b></div></div><button class="btn btn-secondary btn-sm btn-block" data-open-user="${u.user_id}">Administrar</button></div>`).join("");
-    $("#content").innerHTML = `<div class="card compact-card"><div class="card-head"><div><h2>Usuarios</h2><p>${allowed.length} accesos visibles</p></div><div class="actions">${filter === "clipper" ? `<button id="requestAllPayBtn" class="btn btn-secondary">💳 Solicitar datos pendientes</button>` : ""}<button id="createClipperBtn" class="btn btn-primary">＋ Crear acceso</button></div></div><div class="access-toolbar"><div class="access-tabs"><button class="access-tab ${filter==="clipper"?"active":""}" data-access-filter="clipper">Cliperos (${allowed.filter(u=>u.role==="clipper").length})</button>${state.profile.role === "superadmin" ? `<button class="access-tab ${filter==="admin"?"active":""}" data-access-filter="admin">Administradores (${allowed.filter(u=>["admin","superadmin"].includes(u.role)).length})</button><button class="access-tab ${filter==="all"?"active":""}" data-access-filter="all">Todos</button>` : ""}</div><label class="access-search">⌕ <input id="accessSearch" placeholder="Buscar usuario, nombre o celular"></label></div><div class="access-card-grid" id="accessGrid">${cards || '<div class="empty">No hay usuarios en esta categoría.</div>'}</div></div>`;
+    const cards = visible.map(u => `<div class="access-user-card" data-search-user="${esc(`${u.username} ${u.names||""} ${u.surnames||""} ${u.phone||""}`.toLowerCase())}"><div class="access-user-top"><span class="access-user-avatar">${uiIcon(u.role === "clipper" ? "user" : "shield",18)}</span><div class="access-user-id"><strong>${esc(u.names ? `${u.names} ${u.surnames||""}`.trim() : `@${u.username}`)}</strong><small>@${esc(u.username)} · ${u.role === "superadmin" ? "Superadmin" : u.role === "admin" ? "Administrador" : "Clipero"}</small></div><span class="pill ${u.active ? "pill-green" : "pill-red"}">${u.active ? "Activo" : "Suspendido"}</span></div><div class="access-user-meta"><div><span>WhatsApp</span><b>${esc(u.phone || "Pendiente")}</b></div><div><span>${u.role === "clipper" ? "Pago" : "Creado"}</span><b class="${u.role === "clipper" ? (u.payment_account ? "payment-ready" : "payment-missing") : ""}">${u.role === "clipper" ? (u.payment_account ? paymentMethodLabel(u.payment_method) : "Pendiente") : dateOnlyLabel(u.created_at)}</b></div></div><button class="btn btn-secondary btn-sm btn-block" data-open-user="${u.user_id}">Administrar</button></div>`).join("");
+    $("#content").innerHTML = `<div class="card compact-card"><div class="card-head"><div><h2>Usuarios</h2><p>${allowed.length} accesos visibles</p></div><div class="actions">${filter === "clipper" ? `<button id="requestAllPayBtn" class="btn btn-secondary">${uiIcon("wallet",15)} Solicitar datos</button>` : ""}<button id="createClipperBtn" class="btn btn-primary">${uiIcon("plus",15)} Crear acceso</button></div></div><div class="access-toolbar"><div class="access-tabs"><button class="access-tab ${filter==="clipper"?"active":""}" data-access-filter="clipper">Cliperos (${allowed.filter(u=>u.role==="clipper").length})</button>${state.profile.role === "superadmin" ? `<button class="access-tab ${filter==="admin"?"active":""}" data-access-filter="admin">Administradores (${allowed.filter(u=>["admin","superadmin"].includes(u.role)).length})</button><button class="access-tab ${filter==="all"?"active":""}" data-access-filter="all">Todos</button>` : ""}</div><label class="access-search">${uiIcon("user",14)} <input id="accessSearch" placeholder="Buscar usuario, nombre o celular"></label></div><div class="access-card-grid" id="accessGrid">${cards || '<div class="empty">No hay usuarios en esta categoría.</div>'}</div></div>`;
     $("#createClipperBtn").addEventListener("click",openCreateUserModal);
     $("#requestAllPayBtn")?.addEventListener("click", async () => { if (!confirm("¿Solicitar datos de pago a todos los cliperos activos que aún no los registraron?")) return; try { const count = await query(state.supabase.rpc("admin_request_payment_data_all")); toast(`Solicitud activada para ${count || 0} cliperos`, "success"); await renderAdminClippers(); } catch (error) { toast(errorMessage(error), "error"); } });
     $$('[data-access-filter]').forEach(b=>b.addEventListener("click",()=>{state.accessRoleFilter=b.dataset.accessFilter;renderAdminClippers();}));
@@ -1990,7 +2018,7 @@
     const box=$("#clipperTabContent"),tab=state.selectedClipperTab;
     if(tab==="info"){
       const pay = profile.role === "clipper" ? `<div><span>Pago</span><b>${profile.payment_account ? `${paymentMethodLabel(profile.payment_method)} · ${maskPayment(profile.payment_account)}` : "Pendiente"}</b></div>` : "";
-      box.innerHTML=`<div class="profile-admin-grid"><div class="profile-card"><span class="avatar large-avatar">${profile.role === "clipper" ? "🥷" : "🛡️"}</span><div><h3>${esc(profile.names||profile.username)} ${esc(profile.surnames||"")}</h3><p class="muted">@${esc(profile.username)} · ${profile.role}</p></div></div><div class="summary-list compact-summary"><div><span>WhatsApp</span><b>${esc(profile.phone||"Pendiente")}</b></div>${pay}<div><span>Redes activas</span><b>${accounts.filter(a=>a.active).length}</b></div><div><span>Reportes</span><b>${reports.length}</b></div><div><span>Estado</span><b>${profile.active?"Activo":"Suspendido"}</b></div><div><span>Último login</span><b>${profile.last_login_at?dateTimeLabel(profile.last_login_at):"Nunca"}</b></div><div><span>Última actividad</span><b>${relativeTime(profile.last_seen_at)}</b></div><div><span>Ingresos</span><b>${num(profile.login_count||0)}</b></div></div><div style="margin-top:10px">${presenceHtml(profile)}</div><div class="actions"><button id="editAdminProfile" class="btn btn-secondary">Editar datos</button>${profile.role === "clipper" ? `<button id="requestPayData" class="btn ${profile.payment_account && !profile.payment_required ? "btn-ghost" : "btn-primary"}">💳 ${profile.payment_account && !profile.payment_required ? "Solicitar nuevamente" : "Solicitar datos de pago"}</button>${profile.payment_account ? '<button id="copyPaymentAccount" class="btn btn-ghost">Copiar cuenta</button>' : ""}` : ""}</div></div>`;
+      box.innerHTML=`<div class="profile-admin-grid"><div class="profile-card"><span class="avatar large-avatar">${uiIcon(profile.role === "clipper" ? "user" : "shield",22)}</span><div><h3>${esc(profile.names||profile.username)} ${esc(profile.surnames||"")}</h3><p class="muted">@${esc(profile.username)} · ${profile.role}</p></div></div><div class="summary-list compact-summary"><div><span>WhatsApp</span><b>${esc(profile.phone||"Pendiente")}</b></div>${pay}<div><span>Redes activas</span><b>${accounts.filter(a=>a.active).length}</b></div><div><span>Reportes</span><b>${reports.length}</b></div><div><span>Estado</span><b>${profile.active?"Activo":"Suspendido"}</b></div><div><span>Último login</span><b>${profile.last_login_at?dateTimeLabel(profile.last_login_at):"Nunca"}</b></div><div><span>Última actividad</span><b>${relativeTime(profile.last_seen_at)}</b></div><div><span>Ingresos</span><b>${num(profile.login_count||0)}</b></div></div><div style="margin-top:10px">${presenceHtml(profile)}</div><div class="actions"><button id="editAdminProfile" class="btn btn-secondary">Editar datos</button>${profile.role === "clipper" ? `<button id="requestPayData" class="btn ${profile.payment_account && !profile.payment_required ? "btn-ghost" : "btn-primary"}">${uiIcon("wallet",15)} ${profile.payment_account && !profile.payment_required ? "Solicitar nuevamente" : "Solicitar datos de pago"}</button>${profile.payment_account ? '<button id="copyPaymentAccount" class="btn btn-ghost">Copiar cuenta</button>' : ""}` : ""}</div></div>`;
       $("#editAdminProfile").addEventListener("click",()=>openAdminEditProfile(profile));
       $("#requestPayData")?.addEventListener("click",async()=>{try{await query(state.supabase.rpc("admin_request_payment_data",{p_user_id:profile.id,p_required:true}));toast("La solicitud aparecerá obligatoriamente al clipero","success");await renderPage(true);}catch(error){toast(errorMessage(error),"error");}});
       $("#copyPaymentAccount")?.addEventListener("click",()=>copyText(profile.payment_account)); return;
@@ -2047,7 +2075,7 @@
     setHeader("Configuración", "Período, pagos y comportamiento general.");
     const [settings,rules,periods]=await Promise.all([query(state.supabase.from("app_settings").select("*").eq("id",1).single()),query(state.supabase.from("platform_payment_rules").select("*").order("platform")),query(state.supabase.from("reporting_periods").select("*").eq("is_active",true).limit(1))]);
     const period=periods?.[0]||state.activePeriod||{};
-    $("#content").innerHTML=`<div class="settings-section"><div class="settings-nav"><button class="active" data-settings-tab="general">General</button><button data-settings-tab="period">Período activo</button><button data-settings-tab="payments">Pago por red</button><button data-settings-tab="system">Sistema</button></div><div class="settings-pane active" data-settings-pane="general"><div class="card compact-card"><div class="card-head"><div><h2>General</h2><p>Preferencias visibles y comportamiento de la web.</p></div><span class="chip">v${esc(settings.schema_version||"2.0")}</span></div><form id="generalSettingsForm" class="form-grid compact-form"><label>Filas iniciales al agregar<input name="default_slots" type="number" min="1" max="100" value="${settings.default_slots||7}"><small>No limita la cantidad final.</small></label><label>URL pública de ClipControl<input name="public_site_url" type="url" value="${esc(settings.public_site_url||location.origin)}" placeholder="https://cliperos.netlify.app"></label><label class="full checkbox-label"><input name="possible_bonus_enabled" type="checkbox" ${settings.possible_bonus_enabled?"checked":""}> Permitir bono adicional por desempeño</label><div class="full actions"><button class="btn btn-primary">Guardar general</button></div></form></div></div><div class="settings-pane" data-settings-pane="period"><div class="card compact-card"><div class="card-head"><div><h2>Período activo</h2><p>Esta es la única fecha que verán administración y cliperos.</p></div><span class="pill pill-green">Fuente única</span></div><form id="periodForm" class="period-form"><label class="wide">Nombre<input name="name" value="${esc(period.name||"")}" placeholder="Campaña agosto"></label><label>Inicio<input name="start_date" type="date" required value="${period.start_date||""}"></label><label>Fin<input name="end_date" type="date" required value="${period.end_date||""}"></label><label>Fecha y hora límite<input name="deadline" type="datetime-local" required value="${dateTimeLocalValue(period.submission_deadline)}"></label><div class="wide actions"><button class="btn btn-primary">Aplicar a todos</button></div></form></div></div><div class="settings-pane" data-settings-pane="payments"><div class="card compact-card"><div class="card-head"><div><h2>Pago por plataforma</h2><p>TikTok está remunerado por defecto. Activa otras redes cuando lo decidas.</p></div></div><div class="platform-rule-list">${Object.keys(PLATFORMS).map(platform=>{const r=rules.find(x=>x.platform===platform)||{};return `<form class="platform-rule-row" data-rule-platform="${platform}"><div>${platformBadge(platform)}<small class="muted" style="display:block;margin-top:5px">${r.pay_enabled?"Cuenta para pago":"Solo informativa"}</small></div><label class="switch-line"><input name="pay_enabled" type="checkbox" ${r.pay_enabled?"checked":""}> Remunerar</label><label>Meta de vistas<input name="target_views" type="number" min="1" value="${r.target_views||250000}"></label><label>Alerta<input name="low_alert" type="number" min="0" value="${r.low_alert||70000}"></label><label>Pago máximo S/<input name="max_base_pay" type="number" min="0" step="0.01" value="${r.max_base_pay||300}"></label><button class="btn btn-secondary btn-sm">Guardar</button></form>`;}).join("")}</div></div></div><div class="settings-pane" data-settings-pane="system"><div class="card compact-card"><div class="card-head"><div><h2>Diagnóstico</h2><p>Comprueba sesión, base de datos y Edge Function.</p></div></div><button id="runDiagnosticsBtn" class="btn btn-dark">🩺 Revisar sistema</button><div id="diagnosticsBox" style="margin-top:12px"></div></div></div></div>`;
+    $("#content").innerHTML=`<div class="settings-section"><div class="settings-nav"><button class="active" data-settings-tab="general">General</button><button data-settings-tab="period">Período activo</button><button data-settings-tab="payments">Pago por red</button><button data-settings-tab="system">Sistema</button></div><div class="settings-pane active" data-settings-pane="general"><div class="card compact-card"><div class="card-head"><div><h2>General</h2><p>Preferencias visibles y comportamiento de la web.</p></div><span class="chip">v${esc(settings.schema_version||"2.0")}</span></div><form id="generalSettingsForm" class="form-grid compact-form"><label>Filas iniciales al agregar<input name="default_slots" type="number" min="1" max="100" value="${settings.default_slots||7}"><small>No limita la cantidad final.</small></label><label>URL pública de ClipControl<input name="public_site_url" type="url" value="${esc(settings.public_site_url||location.origin)}" placeholder="https://cliperos.netlify.app"></label><label class="full checkbox-label"><input name="possible_bonus_enabled" type="checkbox" ${settings.possible_bonus_enabled?"checked":""}> Permitir bono adicional por desempeño</label><div class="full actions"><button class="btn btn-primary">Guardar general</button></div></form></div></div><div class="settings-pane" data-settings-pane="period"><div class="card compact-card"><div class="card-head"><div><h2>Período activo</h2><p>Esta es la única fecha que verán administración y cliperos.</p></div><span class="pill pill-green">Fuente única</span></div><form id="periodForm" class="period-form"><label class="wide">Nombre<input name="name" value="${esc(period.name||"")}" placeholder="Campaña agosto"></label><label>Inicio<input name="start_date" type="date" required value="${period.start_date||""}"></label><label>Fin<input name="end_date" type="date" required value="${period.end_date||""}"></label><label>Fecha y hora límite<input name="deadline" type="datetime-local" required value="${dateTimeLocalValue(period.submission_deadline)}"></label><div class="wide actions"><button class="btn btn-primary">Aplicar a todos</button></div></form></div></div><div class="settings-pane" data-settings-pane="payments"><div class="card compact-card"><div class="card-head"><div><h2>Pago por plataforma</h2><p>TikTok está remunerado por defecto. Activa otras redes cuando lo decidas.</p></div></div><div class="platform-rule-list">${Object.keys(PLATFORMS).map(platform=>{const r=rules.find(x=>x.platform===platform)||{};return `<form class="platform-rule-row" data-rule-platform="${platform}"><div>${platformBadge(platform)}<small class="muted" style="display:block;margin-top:5px">${r.pay_enabled?"Cuenta para pago":"Solo informativa"}</small></div><label class="switch-line"><input name="pay_enabled" type="checkbox" ${r.pay_enabled?"checked":""}> Remunerar</label><label>Meta de vistas<input name="target_views" type="number" min="1" value="${r.target_views||250000}"></label><label>Alerta<input name="low_alert" type="number" min="0" value="${r.low_alert||70000}"></label><label>Pago máximo S/<input name="max_base_pay" type="number" min="0" step="0.01" value="${r.max_base_pay||300}"></label><button class="btn btn-secondary btn-sm">Guardar</button></form>`;}).join("")}</div></div></div><div class="settings-pane" data-settings-pane="system"><div class="card compact-card"><div class="card-head"><div><h2>Diagnóstico</h2><p>Comprueba sesión, base de datos y Edge Function.</p></div></div><button id="runDiagnosticsBtn" class="btn btn-dark">${uiIcon("activity",15)} Revisar sistema</button><div id="diagnosticsBox" style="margin-top:12px"></div></div></div></div>`;
     $$('[data-settings-tab]').forEach(b=>b.addEventListener("click",()=>{$$('[data-settings-tab]').forEach(x=>x.classList.toggle("active",x===b));$$('[data-settings-pane]').forEach(p=>p.classList.toggle("active",p.dataset.settingsPane===b.dataset.settingsTab));}));
     $("#generalSettingsForm").addEventListener("submit",async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));try{await query(state.supabase.from("app_settings").update({default_slots:Number(f.default_slots),public_site_url:f.public_site_url.trim(),possible_bonus_enabled:f.possible_bonus_enabled==="on"}).eq("id",1));toast("Configuración general guardada","success");await loadGlobalContext();}catch(error){toast(errorMessage(error),"error");}});
     $("#periodForm").addEventListener("submit",async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));const deadline=new Date(f.deadline);if(Number.isNaN(deadline.getTime()))return toast("Fecha límite inválida","error");try{await query(state.supabase.rpc("admin_set_active_period",{p_start_date:f.start_date,p_end_date:f.end_date,p_deadline:deadline.toISOString(),p_name:f.name||null}));state.adminWeek=f.start_date;toast("Período activo actualizado para todos","success");await renderPage(true);}catch(error){toast(errorMessage(error),"error");}});
@@ -2071,7 +2099,7 @@
 
 
   /* ===================================================================
-     CLIPCONTROL 2.1 PRO · PERIOD ENGINE / PRESENCE / COMMUNICATIONS
+     CLIPCONTROL 2.2 LIVE · PERIOD ENGINE / PRESENCE / COMMUNICATIONS
      =================================================================== */
 
   function relativeTime(value) {
@@ -2250,7 +2278,7 @@
   }
 
   function announcementIcon(kind) {
-    return ({urgent:"🚨",important:"⚠️",payment:"💳",period:"📅",admin:"🟣",info:"ℹ️"})[kind] || "ℹ️";
+    const icon = ({urgent:"alert",important:"alert",payment:"wallet",period:"history",admin:"shield",info:"megaphone"})[kind] || "megaphone"; return `<span class="announcement-type-icon">${uiIcon(icon,15)}</span>`;
   }
 
   async function showMandatoryAnnouncements() {
@@ -2414,8 +2442,8 @@
     const roleFilter=state.accessRoleFilter||"clipper",activityFilter=state.accessActivityFilter||"all";
     let visible=roleFilter==="all"?allowed:roleFilter==="admin"?allowed.filter(u=>["admin","superadmin"].includes(u.role)):allowed.filter(u=>u.role===roleFilter);
     visible=visible.filter(u=>{const k=presenceInfo(u).key;if(activityFilter==="all")return true;if(activityFilter==="online")return k==="online";if(activityFilter==="warning")return ["low","recent"].includes(k);if(activityFilter==="inactive")return ["inactive","never"].includes(k);if(activityFilter==="never")return k==="never";return true;});
-    const cards=visible.map(u=>{const pr=presenceInfo(u);return `<div class="access-user-card" data-search-user="${esc(`${u.username} ${u.names||""} ${u.surnames||""} ${u.phone||""}`.toLowerCase())}"><div class="access-user-top"><span class="access-user-avatar">${u.role==="clipper"?"🥷":"🛡️"}</span><div class="access-user-id"><strong>${esc(u.names?`${u.names} ${u.surnames||""}`.trim():`@${u.username}`)}</strong><small>@${esc(u.username)} · ${u.role==="superadmin"?"Superadmin":u.role==="admin"?"Administrador":"Clipero"}</small></div><span class="pill ${u.active?"pill-green":"pill-red"}">${u.active?"Activo":"Suspendido"}</span></div>${presenceHtml(u)}<div class="login-meta-grid"><div><span>Último login</span><b>${u.last_login_at?dateTimeLabel(u.last_login_at):"Nunca"}</b></div><div><span>Ingresos</span><b>${num(u.login_count||0)}</b></div><div><span>${u.role==="clipper"?"Pago":"Creado"}</span><b>${u.role==="clipper"?(u.payment_account?paymentMethodLabel(u.payment_method):"Pendiente"):dateOnlyLabel(u.created_at)}</b></div></div><button class="btn btn-secondary btn-sm btn-block" data-open-user="${u.user_id}">Administrar</button></div>`;}).join("");
-    $("#content").innerHTML=`<div class="card compact-card"><div class="card-head"><div><h2>Usuarios</h2><p>${allowed.length} accesos · ${allowed.filter(u=>presenceInfo(u).key==="online").length} en línea</p></div><div class="actions">${roleFilter==="clipper"?'<button id="requestAllPayBtn" class="btn btn-secondary">💳 Solicitar datos pendientes</button>':""}<button id="createClipperBtn" class="btn btn-primary">＋ Crear acceso</button></div></div><div class="access-toolbar"><div class="access-tabs"><button class="access-tab ${roleFilter==="clipper"?"active":""}" data-access-filter="clipper">Cliperos (${allowed.filter(u=>u.role==="clipper").length})</button>${state.profile.role==="superadmin"?`<button class="access-tab ${roleFilter==="admin"?"active":""}" data-access-filter="admin">Administradores (${allowed.filter(u=>["admin","superadmin"].includes(u.role)).length})</button><button class="access-tab ${roleFilter==="all"?"active":""}" data-access-filter="all">Todos</button>`:""}</div><div class="actions"><select id="activityFilter"><option value="all" ${activityFilter==="all"?"selected":""}>Toda actividad</option><option value="online" ${activityFilter==="online"?"selected":""}>En línea</option><option value="warning" ${activityFilter==="warning"?"selected":""}>Baja actividad</option><option value="inactive" ${activityFilter==="inactive"?"selected":""}>Inactivos</option><option value="never" ${activityFilter==="never"?"selected":""}>Nunca ingresaron</option></select><label class="access-search">⌕ <input id="accessSearch" placeholder="Buscar usuario, nombre o celular"></label></div></div><div class="access-card-grid" id="accessGrid">${cards||'<div class="empty">No hay usuarios con este filtro.</div>'}</div></div>`;
+    const cards=visible.map(u=>{const pr=presenceInfo(u);return `<div class="access-user-card" data-search-user="${esc(`${u.username} ${u.names||""} ${u.surnames||""} ${u.phone||""}`.toLowerCase())}"><div class="access-user-top"><span class="access-user-avatar">${uiIcon(u.role==="clipper"?"user":"shield",18)}</span><div class="access-user-id"><strong>${esc(u.names?`${u.names} ${u.surnames||""}`.trim():`@${u.username}`)}</strong><small>@${esc(u.username)} · ${u.role==="superadmin"?"Superadmin":u.role==="admin"?"Administrador":"Clipero"}</small></div><span class="pill ${u.active?"pill-green":"pill-red"}">${u.active?"Activo":"Suspendido"}</span></div>${presenceHtml(u)}<div class="login-meta-grid"><div><span>Último login</span><b>${u.last_login_at?dateTimeLabel(u.last_login_at):"Nunca"}</b></div><div><span>Ingresos</span><b>${num(u.login_count||0)}</b></div><div><span>${u.role==="clipper"?"Pago":"Creado"}</span><b>${u.role==="clipper"?(u.payment_account?paymentMethodLabel(u.payment_method):"Pendiente"):dateOnlyLabel(u.created_at)}</b></div></div><button class="btn btn-secondary btn-sm btn-block" data-open-user="${u.user_id}">Administrar</button></div>`;}).join("");
+    $("#content").innerHTML=`<div class="card compact-card"><div class="card-head"><div><h2>Usuarios</h2><p>${allowed.length} accesos · ${allowed.filter(u=>presenceInfo(u).key==="online").length} en línea</p></div><div class="actions">${roleFilter==="clipper"?`<button id="requestAllPayBtn" class="btn btn-secondary">${uiIcon("wallet",15)} Solicitar datos</button>`:""}<button id="createClipperBtn" class="btn btn-primary">${uiIcon("plus",15)} Crear acceso</button></div></div><div class="access-toolbar"><div class="access-tabs"><button class="access-tab ${roleFilter==="clipper"?"active":""}" data-access-filter="clipper">Cliperos (${allowed.filter(u=>u.role==="clipper").length})</button>${state.profile.role==="superadmin"?`<button class="access-tab ${roleFilter==="admin"?"active":""}" data-access-filter="admin">Administradores (${allowed.filter(u=>["admin","superadmin"].includes(u.role)).length})</button><button class="access-tab ${roleFilter==="all"?"active":""}" data-access-filter="all">Todos</button>`:""}</div><div class="actions"><select id="activityFilter"><option value="all" ${activityFilter==="all"?"selected":""}>Toda actividad</option><option value="online" ${activityFilter==="online"?"selected":""}>En línea</option><option value="warning" ${activityFilter==="warning"?"selected":""}>Baja actividad</option><option value="inactive" ${activityFilter==="inactive"?"selected":""}>Inactivos</option><option value="never" ${activityFilter==="never"?"selected":""}>Nunca ingresaron</option></select><label class="access-search">${uiIcon("user",14)} <input id="accessSearch" placeholder="Buscar usuario, nombre o celular"></label></div></div><div class="access-card-grid" id="accessGrid">${cards||'<div class="empty">No hay usuarios con este filtro.</div>'}</div></div>`;
     $("#createClipperBtn").addEventListener("click",openCreateUserModal);$("#requestAllPayBtn")?.addEventListener("click",async()=>{if(!confirm("¿Solicitar datos de pago a todos los cliperos activos que aún no los registraron?"))return;try{const count=await query(state.supabase.rpc("admin_request_payment_data_all"));toast(`Solicitud activada para ${count} clipero(s)`,"success");await renderAdminClippers();}catch(error){toast(errorMessage(error),"error");}});
     $$('[data-access-filter]').forEach(b=>b.addEventListener("click",()=>{state.accessRoleFilter=b.dataset.accessFilter;renderAdminClippers();}));$("#activityFilter").addEventListener("change",e=>{state.accessActivityFilter=e.target.value;renderAdminClippers();});$("#accessSearch").addEventListener("input",e=>{const term=e.target.value.trim().toLowerCase();$$('[data-search-user]').forEach(card=>card.classList.toggle("hidden",term&&!card.dataset.searchUser.includes(term)));});$$('[data-open-user]').forEach(b=>b.addEventListener("click",()=>{state.selectedClipperId=b.dataset.openUser;state.selectedClipperTab="info";renderPage(true);}));
   }
@@ -2475,12 +2503,12 @@
       ${pane("general",`<div class="settings-group-card"><div class="settings-group-title"><div><h3>General</h3><p>Identidad y preferencias principales.</p></div><span class="chip">v${esc(settings.schema_version||"2.1")}</span></div><form id="generalSettingsForm" class="form-grid compact-form"><label>Nombre del sistema<input name="site_name" value="${esc(settings.site_name||"ClipControl")}"></label><label>URL pública<input name="public_site_url" type="url" value="${esc(settings.public_site_url||location.origin)}"></label><label>Filas iniciales al agregar<input name="default_slots" type="number" min="1" max="100" value="${settings.default_slots||7}"><small>No limita el total de videos.</small></label><label class="checkbox-label"><input name="possible_bonus_enabled" type="checkbox" ${settings.possible_bonus_enabled?"checked":""}> Permitir bono adicional</label><div class="full actions"><button class="btn btn-primary">Guardar general</button></div></form></div>`)}
       ${pane("periods",`<div class="period-engine-grid"><div class="settings-group-card"><div class="settings-group-title"><div><h3>Período activo</h3><p>La misma fecha se muestra a todos los usuarios.</p></div><span class="pill ${period.id?"pill-green":"pill-red"}">${period.id?"Activo":"No configurado"}</span></div><form id="periodForm" class="period-form"><label class="wide">Nombre<input name="name" value="${esc(period.name||"")}" placeholder="Período semanal"></label><label>Inicio<input name="start_date" type="date" required value="${period.start_date||""}"></label><label>Fin<input name="end_date" type="date" required value="${period.end_date||""}"></label><label>Fecha y hora límite<input name="deadline" type="datetime-local" required value="${dateTimeLocalValue(period.submission_deadline)}"></label><div class="wide actions"><button class="btn btn-primary">Aplicar período</button><button type="button" id="closePeriodNow" class="btn btn-warning">Cerrar ahora + siguiente</button><button type="button" id="closePeriodOnly" class="btn btn-ghost">Cerrar sin crear siguiente</button></div></form><div class="period-flow"><span>Período actual</span><i>→</i><span>Congelar métricas</span><i>→</i><span>Historial</span><i>→</i><span>Siguiente período limpio</span></div></div><div class="settings-group-card"><div class="settings-group-title"><div><h3>Automatización avanzada</h3><p>Controla qué ocurre al llegar al cierre.</p></div></div><form id="periodEngineForm"><div class="form-grid compact-form"><label>Duración del siguiente período<input name="period_length_days" type="number" min="1" max="31" value="${settings.period_length_days||7}"><small>7 días recomendado.</small></label><label>Tolerancia después del cierre (min)<input name="period_grace_minutes" type="number" min="0" max="1440" value="${settings.period_grace_minutes||0}"></label><label>Ventana de sincronización final (min)<input name="period_final_sync_window_minutes" type="number" min="0" max="1440" value="${settings.period_final_sync_window_minutes||60}"><small>Cada video se refresca como máximo una vez dentro de esta ventana.</small></label><label>Hora de cierre de períodos futuros<input name="submission_cutoff" type="time" value="${esc(String(settings.submission_cutoff||"23:59:00").slice(0,5))}"><small>Zona horaria: ${esc(settings.timezone_name||"America/Lima")}.</small></label><label>Avisos antes del cierre (horas)<input name="period_notify_before_hours" value="${esc((settings.period_notify_before_hours||[24,3]).join(", "))}" placeholder="24, 3"></label></div><div class="settings-switch-grid" style="margin-top:10px">${checkBox("period_auto_rollover",settings.period_auto_rollover,"Crear siguiente período automáticamente","Al cerrar, inicia el siguiente desde el día posterior.")}${checkBox("period_freeze_metrics",settings.period_freeze_metrics,"Congelar métricas al cerrar","El historial no cambia aunque el video siga creciendo.")}${checkBox("period_final_sync_enabled",settings.period_final_sync_enabled,"Sincronización final","Actualiza videos por lotes antes del cierre.")}</div><div class="actions" style="margin-top:12px"><button class="btn btn-primary">Guardar automatización</button></div></form></div></div><div class="settings-group-card" style="margin-top:12px"><div class="settings-group-title"><div><h3>Historial de períodos</h3><p>Los períodos cerrados conservan videos, métricas y pagos.</p></div></div><div class="period-history">${periods.map(p=>`<div class="period-history-row"><div><strong>${esc(p.name||periodRangeLabel(p))}</strong><small>${periodRangeLabel(p)} · ${p.is_active?"Activo":p.closed_at?`Cerrado ${dateTimeLabel(p.closed_at)}`:"Histórico"}${p.metrics_frozen_at?" · métricas congeladas":""}</small></div><div class="period-history-actions">${p.is_active?'<span class="pill pill-green">ACTIVO</span>':`<button class="btn btn-ghost btn-sm" data-reopen-period="${p.id}">Reabrir</button>`}</div></div>`).join("")}</div></div>`)}
       ${pane("payments",`<div class="settings-group-card"><div class="settings-group-title"><div><h3>Pago por plataforma</h3><p>Cada red se calcula de forma independiente.</p></div></div><div class="platform-rule-list">${Object.keys(PLATFORMS).map(platform=>{const r=rules.find(x=>x.platform===platform)||{};return `<form class="platform-rule-row" data-rule-platform="${platform}"><div>${platformBadge(platform)}<small class="muted" style="display:block;margin-top:5px">${r.pay_enabled?"Cuenta para pago":"Solo informativa"}</small></div><label class="switch-line"><input name="pay_enabled" type="checkbox" ${r.pay_enabled?"checked":""}> Remunerar</label><label>Meta<input name="target_views" type="number" min="1" value="${r.target_views||250000}"></label><label>Alerta<input name="low_alert" type="number" min="0" value="${r.low_alert||70000}"></label><label>Máximo S/<input name="max_base_pay" type="number" min="0" step="0.01" value="${r.max_base_pay||300}"></label><button class="btn btn-secondary btn-sm">Guardar</button></form>`;}).join("")}</div></div>`)}
-      ${pane("metrics",`<div class="settings-group-card"><div class="settings-group-title"><div><h3>Actualización de métricas</h3><p>Evita consultas innecesarias y conserva actualización manual.</p></div></div><form id="metricsSettingsForm" class="form-grid compact-form"><label>Modo<select name="metrics_refresh_mode"><option value="entry_manual" ${settings.metrics_refresh_mode==="entry_manual"?"selected":""}>Al ingresar + botón Actualizar</option><option value="automatic" ${settings.metrics_refresh_mode==="automatic"?"selected":""}>Automático programado + manual</option><option value="manual_only" ${settings.metrics_refresh_mode==="manual_only"?"selected":""}>Solo manual</option></select></label><label>Intervalo mínimo (min)<input name="metrics_min_refresh_minutes" type="number" min="0" max="1440" value="${settings.metrics_min_refresh_minutes||10}"></label><div class="full settings-subtle alert alert-info compact-alert"><div>ℹ️</div><div><strong>TikTok, YouTube, Facebook e Instagram</strong><p>Se mantienen los detectores actuales. Los históricos cerrados no se vuelven a recalcular.</p></div></div><div class="full actions"><button class="btn btn-primary">Guardar métricas</button></div></form></div>`)}
+      ${pane("metrics",`<div class="settings-group-card"><div class="settings-group-title"><div><h3>Métricas LIVE</h3><p>Actualización automática sin recargar.</p></div></div><form id="metricsSettingsForm" class="form-grid compact-form"><label>Modo<select name="metrics_refresh_mode"><option value="automatic" selected>Automático LIVE</option></select></label><label>Intervalo mínimo (min)<input name="metrics_min_refresh_minutes" type="number" min="5" max="180" value="${settings.metrics_min_refresh_minutes||15}"></label><label>Intervalo LIVE por video (min)<input name="metrics_live_interval_minutes" type="number" min="5" max="180" value="${settings.metrics_live_interval_minutes||15}"><small>15 min recomendado para evitar bloqueos de las plataformas.</small></label><label>Tamaño de lote LIVE<input name="metrics_live_batch_size" type="number" min="10" max="100" value="${settings.metrics_live_batch_size||60}"></label><label class="full checkbox-label"><input name="metrics_live_enabled" type="checkbox" ${settings.metrics_live_enabled!==false?"checked":""}> Activar métricas LIVE</label><div class="full settings-subtle alert alert-info compact-alert"><div>${uiIcon("activity",16)}</div><div><strong>En vivo</strong><p>Los cambios aparecen solos. El servidor respeta el intervalo configurado.</p></div></div><div class="full actions"><button class="btn btn-primary">${uiIcon("check",15)} Guardar</button></div></form></div>`)}
       ${pane("clippers",`<div class="settings-group-card"><div class="settings-group-title"><div><h3>Actividad de cliperos</h3><p>Define cuándo marcar baja actividad o inactividad.</p></div></div><form id="clipperSettingsForm" class="form-grid compact-form"><label>Baja actividad después de (días)<input name="inactive_warning_days" type="number" min="1" value="${settings.inactive_warning_days||3}"></label><label>Inactivo después de (días)<input name="inactive_critical_days" type="number" min="1" value="${settings.inactive_critical_days||7}"></label><label>Considerar “En línea” durante (min)<input name="online_window_minutes" type="number" min="1" max="30" value="${settings.online_window_minutes||5}"></label><label class="checkbox-label"><input name="payment_data_default_required" type="checkbox" ${settings.payment_data_default_required?"checked":""}> Datos de pago obligatorios para nuevos cliperos</label><div class="full actions"><button class="btn btn-primary">Guardar cliperos</button></div></form></div>`)}
-      ${pane("notices",`<div class="settings-group-card"><div class="settings-group-title"><div><h3>Comunicaciones</h3><p>Publica avisos y controla confirmaciones.</p></div></div><div class="actions"><button id="goAnnouncementsSettings" class="btn btn-primary">📢 Abrir Comunicados</button><button id="newAnnouncementSettings" class="btn btn-secondary">＋ Nuevo aviso</button></div><div class="settings-help" style="margin-top:12px">Los avisos pueden ser informativos, importantes, urgentes, de pago o período. Puedes programar inicio/fin y exigir confirmación.</div></div>`)}
+      ${pane("notices",`<div class="settings-group-card"><div class="settings-group-title"><div><h3>Comunicaciones</h3><p>Publica avisos y controla confirmaciones.</p></div></div><div class="actions"><button id="goAnnouncementsSettings" class="btn btn-primary">${uiIcon("megaphone",15)} Comunicados</button><button id="newAnnouncementSettings" class="btn btn-secondary">${uiIcon("plus",15)} Nuevo aviso</button></div><div class="settings-help" style="margin-top:12px">Los avisos pueden ser informativos, importantes, urgentes, de pago o período. Puedes programar inicio/fin y exigir confirmación.</div></div>`)}
       ${pane("access",`<div class="settings-group-card"><div class="settings-group-title"><div><h3>Accesos y seguimiento</h3><p>Visibilidad administrativa sin datos invasivos.</p></div></div><div class="summary-list compact-summary"><div><span>Último login</span><b>Activo</b></div><div><span>Estado actual</span><b>Última actividad</b></div><div><span>Conteo de ingresos</span><b>Activo</b></div><div><span>IP / huella de dispositivo</span><b>No se registra</b></div></div><div class="alert alert-info compact-alert" style="margin-top:12px"><div>🔐</div><div><strong>Privacidad</strong><p>ClipControl registra únicamente login y actividad básica necesaria para administración de accesos.</p></div></div></div>`)}
       ${pane("appearance",`<div class="settings-group-card"><div class="settings-group-title"><div><h3>Apariencia</h3><p>Tema completo, movimiento y densidad.</p></div></div><form id="appearanceSettingsForm" class="form-grid compact-form"><label>Tema predeterminado<select name="default_theme"><option value="system" ${settings.default_theme==="system"?"selected":""}>Sistema</option><option value="light" ${settings.default_theme==="light"?"selected":""}>Claro</option><option value="dark" ${settings.default_theme==="dark"?"selected":""}>Oscuro</option></select></label><label>Animaciones<select name="motion_level"><option value="full" ${settings.motion_level==="full"?"selected":""}>Completas</option><option value="reduced" ${settings.motion_level==="reduced"?"selected":""}>Reducidas</option><option value="off" ${settings.motion_level==="off"?"selected":""}>Desactivadas</option></select></label><label>Densidad<select name="ui_density"><option value="compact" ${settings.ui_density==="compact"?"selected":""}>Compacta</option><option value="comfortable" ${settings.ui_density==="comfortable"?"selected":""}>Cómoda</option></select></label><label class="checkbox-label"><input name="allow_theme_switch" type="checkbox" ${settings.allow_theme_switch?"checked":""}> Permitir que cada usuario cambie el tema</label><div class="full actions"><button class="btn btn-primary">Guardar apariencia</button><button type="button" id="previewThemeBtn" class="btn btn-secondary">Vista previa oscuro/claro</button></div></form></div>`)}
-      ${pane("system",`<div class="settings-group-card"><div class="settings-group-title"><div><h3>Estado del sistema</h3><p>Diagnóstico de base de datos y Edge Function.</p></div><span class="chip">2.1 PRO</span></div><div class="actions"><button id="runDiagnosticsBtn" class="btn btn-dark">🩺 Revisar sistema</button><button id="runPeriodMaintenanceBtn" class="btn btn-secondary">↻ Mantenimiento de período</button></div><div id="diagnosticsBox" style="margin-top:12px"></div></div>`)}
+      ${pane("system",`<div class="settings-group-card"><div class="settings-group-title"><div><h3>Estado del sistema</h3><p>Diagnóstico de base de datos y Edge Function.</p></div><span class="chip">2.2 LIVE</span></div><div class="actions"><button id="runDiagnosticsBtn" class="btn btn-dark">${uiIcon("activity",15)} Revisar sistema</button><button id="runPeriodMaintenanceBtn" class="btn btn-secondary">${uiIcon("sync",15)} Mantenimiento</button></div><div id="diagnosticsBox" style="margin-top:12px"></div></div>`)}
       </div>`;
     $$('[data-settings-tab]').forEach(b=>b.addEventListener("click",()=>{state.settingsTab=b.dataset.settingsTab;renderAdminSettings();}));
     const saveSettings=async(payload,msg)=>{try{await query(state.supabase.from("app_settings").update(payload).eq("id",1));toast(msg,"success");await loadGlobalContext();await renderAdminSettings();}catch(error){toast(errorMessage(error),"error");}};
@@ -2491,7 +2519,7 @@
     $("#closePeriodOnly")?.addEventListener("click",async()=>{if(!confirm("¿Cerrar el período SIN crear el siguiente? Los cliperos quedarán sin período activo hasta que administración cree o reabra uno."))return;try{await query(state.supabase.rpc("admin_close_active_period",{p_create_next:false}));toast("Período cerrado. No hay siguiente período activo.","success");await renderPage(true);}catch(error){toast(errorMessage(error),"error");}});
     $$('[data-reopen-period]').forEach(b=>b.addEventListener("click",async()=>{if(!confirm("¿Reabrir este período? El período actualmente activo dejará de estar activo."))return;try{await query(state.supabase.rpc("admin_reopen_period",{p_period_id:b.dataset.reopenPeriod}));toast("Período reabierto","success");await renderPage(true);}catch(error){toast(errorMessage(error),"error");}}));
     $$('[data-rule-platform]').forEach(form=>form.addEventListener("submit",async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(form)),platform=form.dataset.rulePlatform;try{await query(state.supabase.rpc("admin_save_platform_payment_rule",{p_platform:platform,p_pay_enabled:f.pay_enabled==="on",p_target_views:Number(f.target_views),p_low_alert:Number(f.low_alert),p_max_base_pay:Number(f.max_base_pay),p_bonus_enabled:true,p_apply_active:true}));toast(`${platformLabel(platform)} actualizado`,"success");await renderAdminSettings();}catch(error){toast(errorMessage(error),"error");}}));
-    $("#metricsSettingsForm")?.addEventListener("submit",async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));await saveSettings({metrics_refresh_mode:f.metrics_refresh_mode,metrics_min_refresh_minutes:Number(f.metrics_min_refresh_minutes)},"Ajustes de métricas guardados");});
+    $("#metricsSettingsForm")?.addEventListener("submit",async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));await saveSettings({metrics_refresh_mode:"automatic",metrics_min_refresh_minutes:Number(f.metrics_min_refresh_minutes),metrics_live_enabled:f.metrics_live_enabled==="on",metrics_live_interval_minutes:Number(f.metrics_live_interval_minutes),metrics_live_batch_size:Number(f.metrics_live_batch_size),realtime_ui_enabled:true},"Ajustes LIVE guardados");startLiveMetricsEngine();});
     $("#clipperSettingsForm")?.addEventListener("submit",async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));const w=Number(f.inactive_warning_days),c=Number(f.inactive_critical_days);if(c<w)return toast("El umbral de inactividad debe ser igual o mayor al de baja actividad.","error");await saveSettings({inactive_warning_days:w,inactive_critical_days:c,online_window_minutes:Number(f.online_window_minutes),payment_data_default_required:f.payment_data_default_required==="on"},"Ajustes de cliperos guardados");});
     $("#goAnnouncementsSettings")?.addEventListener("click",()=>navigate("announcements"));$("#newAnnouncementSettings")?.addEventListener("click",openCreateAnnouncementModal);
     $("#appearanceSettingsForm")?.addEventListener("submit",async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));localStorage.removeItem("clipcontrol_theme_v21");await saveSettings({default_theme:f.default_theme,motion_level:f.motion_level,ui_density:f.ui_density,allow_theme_switch:f.allow_theme_switch==="on"},"Apariencia guardada");});$("#previewThemeBtn")?.addEventListener("click",toggleTheme);
@@ -2501,14 +2529,14 @@
   async function openCommandCenter() {
     if(!["admin","superadmin"].includes(state.profile?.role))return;
     let users=[];try{users=await query(state.supabase.from("admin_clipper_overview").select("user_id,username,names,surnames,role,phone,last_login_at").order("username").limit(150));}catch(_){return;}
-    const actions=[{id:"reports",icon:"📋",title:"Reportes pendientes",sub:"Abrir evaluación de reportes"},{id:"payments",icon:"💳",title:"Pagos",sub:"Ver datos de cobro y pagos"},{id:"announcements",icon:"📢",title:"Crear / revisar comunicados",sub:"Avisos para cliperos y administradores"},{id:"settings",icon:"⚙",title:"Configuración",sub:"Períodos, métricas y apariencia"}];
+    const actions=[{id:"reports",icon:"report",title:"Reportes pendientes",sub:"Abrir evaluación de reportes"},{id:"payments",icon:"wallet",title:"Pagos",sub:"Ver datos de cobro y pagos"},{id:"announcements",icon:"megaphone",title:"Crear / revisar comunicados",sub:"Avisos para cliperos y administradores"},{id:"settings",icon:"settings",title:"Configuración",sub:"Períodos, métricas y apariencia"}];
     const layer=$("#modalLayer");layer.innerHTML=`<div class="modal-backdrop"><div class="command-panel"><div class="command-search"><input id="commandInput" autocomplete="off" placeholder="Buscar clipero, usuario o acción..."></div><div class="command-results" id="commandResults"></div><div class="command-hint"><span>Enter · abrir</span><span>Ctrl + K</span></div></div></div>`;
-    const render=(term="")=>{const q=term.trim().toLowerCase();const a=actions.filter(x=>!q||`${x.title} ${x.sub}`.toLowerCase().includes(q));const u=users.filter(x=>!q||`${x.username} ${x.names||""} ${x.surnames||""} ${x.phone||""}`.toLowerCase().includes(q)).slice(0,12);$("#commandResults",layer).innerHTML=`${a.map(x=>`<button class="command-result" data-command-page="${x.id}"><span class="command-result-icon">${x.icon}</span><div><strong>${esc(x.title)}</strong><small>${esc(x.sub)}</small></div><span class="command-shortcut">Abrir</span></button>`).join("")}${u.length?'<div class="divider"></div>':""}${u.map(x=>`<button class="command-result" data-command-user="${x.user_id}"><span class="command-result-icon">${x.role==="clipper"?"🥷":"🛡️"}</span><div><strong>${esc(x.names?`${x.names} ${x.surnames||""}`.trim():x.username)}</strong><small>@${esc(x.username)} · ${relativeTime(x.last_login_at)}</small></div><span class="command-shortcut">Perfil</span></button>`).join("")}`;$$('[data-command-page]',layer).forEach(b=>b.addEventListener("click",()=>{closeModal();navigate(b.dataset.commandPage);}));$$('[data-command-user]',layer).forEach(b=>b.addEventListener("click",()=>{state.page="clippers";state.selectedClipperId=b.dataset.commandUser;state.selectedClipperTab="info";closeModal();renderPage(true);}));};
+    const render=(term="")=>{const q=term.trim().toLowerCase();const a=actions.filter(x=>!q||`${x.title} ${x.sub}`.toLowerCase().includes(q));const u=users.filter(x=>!q||`${x.username} ${x.names||""} ${x.surnames||""} ${x.phone||""}`.toLowerCase().includes(q)).slice(0,12);$("#commandResults",layer).innerHTML=`${a.map(x=>`<button class="command-result" data-command-page="${x.id}"><span class="command-result-icon">${uiIcon(x.icon,17)}</span><div><strong>${esc(x.title)}</strong><small>${esc(x.sub)}</small></div><span class="command-shortcut">Abrir</span></button>`).join("")}${u.length?'<div class="divider"></div>':""}${u.map(x=>`<button class="command-result" data-command-user="${x.user_id}"><span class="command-result-icon">${uiIcon(x.role==="clipper"?"user":"shield",17)}</span><div><strong>${esc(x.names?`${x.names} ${x.surnames||""}`.trim():x.username)}</strong><small>@${esc(x.username)} · ${relativeTime(x.last_login_at)}</small></div><span class="command-shortcut">Perfil</span></button>`).join("")}`;$$('[data-command-page]',layer).forEach(b=>b.addEventListener("click",()=>{closeModal();navigate(b.dataset.commandPage);}));$$('[data-command-user]',layer).forEach(b=>b.addEventListener("click",()=>{state.page="clippers";state.selectedClipperId=b.dataset.commandUser;state.selectedClipperTab="info";closeModal();renderPage(true);}));};
     render();const input=$("#commandInput",layer);input.addEventListener("input",()=>render(input.value));input.addEventListener("keydown",e=>{if(e.key==="Escape")closeModal();});setTimeout(()=>input.focus(),0);
   }
 
   // ================================================================
-  // CLIPCONTROL 2.1 PRO · CLIPPER DATA + SMART METRIC REFRESH
+  // CLIPCONTROL 2.2 LIVE · CLIPPER DATA + REALTIME METRICS
   // ================================================================
   async function loadClipperCurrentData() {
     const [accounts, settings] = await Promise.all([
@@ -2576,13 +2604,13 @@
       catch(error) { results.push({name,ok:false,detail:errorMessage(error)}); }
     };
     await check("Sesión autenticada", async()=>{const {data,error}=await state.supabase.auth.getUser();if(error||!data.user)throw error||new Error("Sin usuario");return data.user.id.slice(0,8);});
-    await check("ClipControl 2.1", async()=>{const s=await query(state.supabase.from("app_settings").select("schema_version,metrics_refresh_mode").eq("id",1).single());if(s.schema_version!=="2.1.0")throw new Error(`Versión detectada ${s.schema_version||"desconocida"}`);return `v${s.schema_version} · métricas ${s.metrics_refresh_mode}`;});
+    await check("ClipControl 2.2 LIVE", async()=>{const s=await query(state.supabase.from("app_settings").select("schema_version,metrics_refresh_mode,metrics_live_enabled,metrics_live_interval_minutes,realtime_ui_enabled").eq("id",1).single());if(s.schema_version!=="2.2.0")throw new Error(`Versión detectada ${s.schema_version||"desconocida"}`);return `v${s.schema_version} · LIVE ${s.metrics_live_enabled?"activo":"apagado"} · ${s.metrics_live_interval_minutes||15} min`;});
     await check("Período activo", async()=>{const p=await query(state.supabase.from("reporting_periods").select("start_date,end_date,submission_deadline").eq("is_active",true).limit(1).maybeSingle());if(!p)throw new Error("No existe período activo");return `${periodRangeLabel(p)} · cierre ${dateTimeLabel(p.submission_deadline)}`;});
     await check("Actividad / último login", async()=>{const p=await query(state.supabase.from("profiles").select("last_login_at,last_seen_at,login_count").eq("id",state.profile.id).single());return `${p.login_count||0} ingresos · ${relativeTime(p.last_seen_at)}`;});
     await check("Comunicados", async()=>{const rows=await query(state.supabase.from("my_visible_announcements").select("id").limit(1));return `${rows.length} aviso(s) visible(s) en la muestra`;});
     await check("Edge Function", async()=>{const health=await invokeAdminFunction({action:"health"});return `${health.function||"bright-processor"} · v${health.version||"?"}`;});
     box.innerHTML=results.map(r=>`<div class="alert ${r.ok?"alert-success":"alert-danger"}" style="margin-bottom:8px"><div>${r.ok?"✓":"✕"}</div><div><strong>${esc(r.name)}</strong><p>${esc(r.detail||"Correcto")}</p></div></div>`).join("");
-    button.disabled=false;button.textContent="🩺 Revisar sistema";
+    button.disabled=false;button.innerHTML=`${uiIcon("activity",15)} Revisar sistema`;
   }
 
   function errorMessage(error) {
@@ -2612,6 +2640,504 @@
       const viewsValue = Number(video.views || 0) > 0 ? num(video.views) : '<span class="muted">Pendiente</span>';
       return `<tr><td><b>${video.position}</b></td><td>${platformBadge(video.platform,true)}<br><small class="muted">${esc(account.account_name || "—")}</small></td><td><div style="display:flex;align-items:center;gap:8px">${thumb}<div><a href="${esc(video.video_url)}" target="_blank" rel="noopener">Abrir video ↗</a>${video.external_title ? `<small class="muted" style="display:block;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(video.external_title)}</small>` : ""}</div></div></td><td><b>${viewsValue}</b></td><td><b>❤ ${num(video.likes || 0)}</b><br><small class="muted">💬 ${num(video.comments || 0)} · ↗ ${num(video.shares || 0)}</small></td><td>${metricStatus(video)}<br><small class="muted">${dateTimeLabel(video.metrics_checked_at)}</small></td>${admin ? `<td>${dateTimeLabel(video.created_at)}</td>` : ""}<td>${actions}</td></tr>`;
     }).join("")}</tbody></table></div>`;
+  }
+
+
+
+  /* ===================================================================
+     CLIPCONTROL 2.2 LIVE · REALTIME UI / PROFESSIONAL NAV / COMPACT UX
+     =================================================================== */
+
+  function uiIcon(name, size = 18) {
+    const paths = {
+      home: '<path d="M3 10.8 12 3l9 7.8v9.2a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1v-9.2Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>',
+      video: '<path d="M4 6.5h10a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2Zm12 4 5-3v9l-5-3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+      plus: '<path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+      history: '<path d="M4 5v5h5M4.7 9.5a8 8 0 1 1-.2 5M12 8v4l3 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+      user: '<path d="M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
+      users: '<path d="M16 21v-1a6 6 0 0 0-6-6H6a6 6 0 0 0-6 6v1M8 10a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM17 3.2a4 4 0 0 1 0 7.6M24 21v-1a6 6 0 0 0-4.5-5.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
+      report: '<path d="M7 3h8l4 4v14H7V3Zm8 0v5h4M10 12h6M10 16h6M10 8h2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+      wallet: '<path d="M3 7a3 3 0 0 1 3-3h12v4M3 7h17a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H6a3 3 0 0 1-3-3V7Zm14 6h4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+      megaphone: '<path d="m4 13 2 6h3l-1.5-5M5 9v5h3l9 4V5L8 9H5Zm12 1a3 3 0 0 1 0 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+      settings: '<path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Zm7.2-3.2a7 7 0 0 0-.1-1l2-1.6-2-3.4-2.5 1a8 8 0 0 0-1.7-1L14.5 3h-5l-.4 3a8 8 0 0 0-1.7 1L5 6 3 9.4 5 11a7 7 0 0 0 0 2l-2 1.6L5 18l2.4-1a8 8 0 0 0 1.7 1l.4 3h5l.4-3a8 8 0 0 0 1.7-1l2.4 1 2-3.4-2-1.6a7 7 0 0 0 .2-1Z" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linejoin="round"/>',
+      network: '<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M3 12h18M12 3c2.5 2.5 3.7 5.5 3.7 9S14.5 18.5 12 21M12 3C9.5 5.5 8.3 8.5 8.3 12S9.5 18.5 12 21" fill="none" stroke="currentColor" stroke-width="1.6"/>',
+      arrow: '<path d="M5 12h14M14 7l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+      eye: '<path d="M2.7 12s3.4-6 9.3-6 9.3 6 9.3 6-3.4 6-9.3 6-9.3-6-9.3-6Z" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="2.7" fill="none" stroke="currentColor" stroke-width="1.7"/>',
+      heart: '<path d="M20.8 4.8a5.5 5.5 0 0 0-7.8 0L12 5.9l-1-1.1a5.5 5.5 0 1 0-7.8 7.8L12 21l8.8-8.4a5.5 5.5 0 0 0 0-7.8Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>',
+      alert: '<path d="M12 3 2.7 20h18.6L12 3Zm0 6v5M12 17.5v.1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+      activity: '<path d="M3 12h4l2-6 4 12 2-6h6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>',
+      check: '<path d="m5 12 4 4L19 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+      shield: '<path d="M12 3 4.5 6v5.4c0 4.5 3 7.6 7.5 9.6 4.5-2 7.5-5.1 7.5-9.6V6L12 3Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>',
+      sync: '<path d="M20 7v5h-5M4 17v-5h5M6.1 8.2A7 7 0 0 1 18 7l2 5M18 15.8A7 7 0 0 1 6 17l-2-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+      logout: '<path d="M10 17l5-5-5-5M15 12H3M14 4h5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>'
+    };
+    return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true">${paths[name] || paths.activity}</svg>`;
+  }
+
+  function navIcon(name) { return `<span class="nav-icon">${uiIcon(name)}</span>`; }
+
+  function announcementIcon(kind) {
+    const icon = ({ urgent:"alert", important:"alert", payment:"wallet", period:"history", admin:"shield", info:"megaphone" })[kind] || "megaphone";
+    return `<span class="announcement-type-icon">${uiIcon(icon,15)}</span>`;
+  }
+
+  function setLiveStatus(mode = "connected", text = "En vivo") {
+    const el = $("#liveStatus");
+    if (!el) return;
+    el.classList.remove("connected","syncing","error");
+    el.classList.add(mode);
+    const label = el.querySelector("span");
+    if (label) label.textContent = text;
+  }
+
+  function showApp() {
+    setAuthenticatedShell(true);
+    const p = state.profile;
+    $("#sideRole").textContent = p.role === "clipper" ? "Portal del clipero" : "Administración";
+    $("#miniName").textContent = p.names || p.username;
+    $("#miniRole").textContent = p.role === "superadmin" ? "Superadministrador" : p.role === "admin" ? "Administrador" : "Clipero";
+    $("#miniAvatar").innerHTML = uiIcon(p.role === "clipper" ? "user" : "shield",18);
+    buildNav();
+  }
+
+  function bindStaticEvents() {
+    applySavedTheme();
+    $("#showPass")?.addEventListener("click",()=>{const input=$("#loginPass");if(input)input.type=input.type==="password"?"text":"password";});
+    $("#loginForm")?.addEventListener("submit",login);
+    $("#logoutBtn")?.addEventListener("click",logout);
+    $("#menuBtn")?.addEventListener("click",()=>$("#sidebar")?.classList.toggle("open"));
+    $("#themeBtn")?.addEventListener("click",toggleTheme);
+    $("#noticeBtn")?.addEventListener("click",openNoticeInbox);
+    document.addEventListener("visibilitychange",()=>{
+      if(document.visibilityState==="visible"){
+        touchPresence(true);
+        const interval=Math.max(Number(state.settings?.metrics_live_interval_minutes||15),5)*60000;
+        if(!state.lastLiveMetricAttempt||Date.now()-state.lastLiveMetricAttempt>=interval) runLiveMetricSync(true);
+      }
+    });
+    window.addEventListener("keydown",event=>{
+      if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==="k"&&["admin","superadmin"].includes(state.profile?.role)){event.preventDefault();openCommandCenter();}
+    });
+    window.matchMedia?.("(prefers-color-scheme: dark)")?.addEventListener?.("change",()=>{if((localStorage.getItem("clipcontrol_theme_v21")||state.settings?.default_theme||"system")==="system")applyThemeMode("system");});
+  }
+
+  function buildNav() {
+    if(!state.profile)return;
+    const admin=["admin","superadmin"].includes(state.profile.role);
+    const desktop=admin
+      ? [["dashboard","home","Inicio"],["clippers","users","Accesos"],["reports","report","Reportes"],["payments","wallet","Pagos"],["announcements","megaphone","Comunicados"],["settings","settings","Ajustes"]]
+      : [["dashboard","home","Inicio"],["videos","video","Videos"],["networks","network","Redes"],["history","history","Historial"],["profile","user","Perfil"]];
+    const nav=$("#nav");
+    if(nav){
+      nav.innerHTML=desktop.map(([id,icon,label])=>`<button data-page="${id}" class="${state.page===id?"active":""}">${navIcon(icon)}<span>${label}</span></button>`).join("");
+      $$('[data-page]',nav).forEach(b=>b.addEventListener("click",async()=>{state.page=b.dataset.page;state.selectedClipperId=null;$("#sidebar")?.classList.remove("open");buildNav();await touchPresence(true);await renderPage(true);}));
+    }
+    const mobile=admin
+      ? [["dashboard","home","Inicio"],["clippers","users","Accesos"],["reports","report","Reportes"],["payments","wallet","Pagos"],["settings","settings","Más"]]
+      : [["dashboard","home","Inicio"],["videos","video","Videos"],["__add","plus","Agregar"],["history","history","Historial"],["profile","user","Perfil"]];
+    const m=$("#mobileNav");
+    if(m){
+      m.innerHTML=mobile.map(([id,icon,label])=>`<button data-mobile-page="${id}" aria-label="${esc(label)}" class="${state.page===id?"active":""} ${id==="__add"?"mobile-add":""}">${navIcon(icon)}${id==="__add"?"":`<span>${label}</span>`}</button>`).join("");
+      $$('[data-mobile-page]',m).forEach(b=>b.addEventListener("click",async()=>{if(b.dataset.mobilePage==="__add")return handleQuickRegisterAction();state.page=b.dataset.mobilePage;state.selectedClipperId=null;buildNav();await touchPresence(true);await renderPage(true);}));
+    }
+  }
+
+  async function loadClipperCurrentData() {
+    const [accounts,settings]=await Promise.all([
+      query(state.supabase.from("social_accounts").select("*").eq("user_id",state.profile.id).order("created_at")),
+      query(state.supabase.from("app_settings").select("*").eq("id",1).single()),
+    ]);
+    state.accounts=accounts;state.settings=settings;
+    const reportId=await query(state.supabase.rpc("ensure_weekly_report",{p_week_start:null}));
+    state.currentReportId=reportId;
+    const [summary,videos,observations,platformSummary]=await Promise.all([
+      query(state.supabase.from("weekly_report_summary").select("*").eq("report_id",reportId).single()),
+      query(state.supabase.from("videos").select("*").eq("report_id",reportId).is("deleted_at",null).order("position")),
+      query(state.supabase.from("report_observations").select("*").eq("report_id",reportId).order("created_at",{ascending:false})),
+      query(state.supabase.from("weekly_report_platform_summary").select("*").eq("report_id",reportId).order("platform")),
+    ]);
+    state.currentSummary=summary;state.videos=videos;state.observations=observations;state.platformSummary=platformSummary||[];
+  }
+
+  function livePlatformCards(rows = [], options = {}) {
+    const rowMap=Object.fromEntries((rows||[]).map(r=>[r.platform,r]));
+    return `<div class="live-platform-grid">${Object.keys(PLATFORMS).map(platform=>{
+      const row=rowMap[platform]||{platform,video_count:0,views:0,likes:0,comments:0,shares:0,calculated_pay:0,pay_enabled:false};
+      const extra=options.adminCounts?.[platform];
+      const click=options.clickable?`type="button" data-live-platform="${platform}"`:"";
+      const footLeft=extra!==undefined?`${extra} clipero${extra===1?"":"s"}`:`${Number(row.video_count||0)} video${Number(row.video_count||0)===1?"":"s"}`;
+      const footRight=row.pay_enabled?money(row.calculated_pay||0):`${num(row.likes||0)} likes`;
+      return `<${options.clickable?"button":"article"} ${click} class="live-platform-card ${platform}">${platformBadge(platform,true)}<strong data-count="${Number(row.views||0)}">${num(row.views||0)}</strong><small>Vistas</small><div class="live-platform-card-foot"><span>${esc(footLeft)}</span><b>${esc(footRight)}</b></div></${options.clickable?"button":"article"}>`;
+    }).join("")}</div>`;
+  }
+
+  function recentVideoCards(videos = []) {
+    if(!videos.length)return `<div class="empty">Aún no registraste videos en este período.</div>`;
+    return `<div class="live-recent-videos">${videos.slice(0,6).map(v=>`<a class="live-video-card" href="${esc(v.video_url)}" target="_blank" rel="noopener"><span class="live-video-platform">${platformLogo(v.platform)}</span><span class="live-video-copy"><strong>${esc(v.external_title||platformLabel(v.platform))}</strong><small>${v.metrics_status==="ok"?'<i class="metric-live-dot"></i>Actualizado':esc(v.metrics_status==="syncing"?"Sincronizando":"Pendiente")}</small></span><span class="live-video-metric"><b>${num(v.views||0)}</b><small>vistas</small></span></a>`).join("")}</div>`;
+  }
+
+  function renderClipperDashboard() {
+    setHeader("Inicio","Métricas en vivo");
+    const s=state.currentSummary,rows=state.platformSummary||[];
+    const paid=rows.find(r=>r.pay_enabled)||rows.find(r=>r.platform==="tiktok")||{platform:"tiktok",views:0,target_views:250000,calculated_pay:0,max_base_pay:300,video_count:0};
+    const target=Math.max(Number(paid.target_views||0),1),views=Number(paid.views||0),progress=clamp(views/target*100,0,100);
+    const editable=reportEditable(s),deadlinePassed=s?.submission_deadline&&Date.now()>new Date(s.submission_deadline).getTime();
+    $("#content").innerHTML=`
+      <section class="live-hero"><div class="live-hero-main"><span class="live-hero-kicker"><i></i> PERÍODO ACTIVO</span><h2>Hola, ${esc(state.profile.names||state.profile.username)}</h2><p>${periodRangeLabel(s)}</p><div class="live-hero-meta"><span>Cierre <b>${dateTimeLabel(s.submission_deadline)}</b></span><span><b>${s.video_count||0}</b> videos</span><span>${deadlinePassed?"Cerrando":"Abierto"}</span></div></div><div class="live-hero-value"><small>Pago estimado</small><strong>${money(s.calculated_base_pay||0)}</strong><span>En vivo</span></div></section>
+      <section class="live-paid-card"><div><span class="paid-card-label">${platformLogo(paid.platform)} ${esc(platformLabel(paid.platform))} · REMUNERADO</span><div class="paid-card-title"><span data-count="${views}">${num(views)}</span> vistas</div><div class="paid-card-sub">Meta ${num(target)} · ${Math.round(progress)}%</div><div class="paid-progress"><span style="width:${progress}%"></span></div></div><div class="paid-side"><small>Pago actual</small><strong>${money(paid.calculated_pay||0)}</strong><span>Máximo ${money(paid.max_base_pay||0)}</span></div></section>
+      ${livePlatformCards(rows)}
+      <div class="clipper-quick-actions"><div class="primary-action-panel"><div><h3>Registrar videos</h3><p>Pega uno o varios enlaces. Las métricas se detectan solas.</p></div><button id="quickAddBtn" class="btn btn-primary" ${!editable?"disabled":""}>${uiIcon("plus")} Agregar videos</button></div><div class="submit-mini-panel"><div><small>Reporte</small><strong>${STATUS_LABELS[s.status]}</strong></div><button id="submitReportBtn" class="btn btn-secondary" ${!editable||s.can_submit===false||Number(s.video_count||0)<1?"disabled":""}>${uiIcon("check")} ${s.submitted_at?"Actualizar":"Enviar"}</button></div></div>
+      <section class="card compact-card" style="margin-top:12px"><div class="card-head"><div><h2>Videos recientes</h2><p>Actualización automática</p></div><button id="viewVideosBtn" class="btn btn-ghost btn-sm">Ver todos ${uiIcon("arrow",14)}</button></div>${recentVideoCards(state.videos)}</section>`;
+    $("#quickAddBtn")?.addEventListener("click",handleQuickRegisterAction);$("#submitReportBtn")?.addEventListener("click",submitCurrentReport);$("#viewVideosBtn")?.addEventListener("click",()=>{state.videoFilterPlatform="all";navigate("videos");});
+    animateDynamicNumbers($("#content"));
+  }
+
+  function rankingRowsV22(platform, rows, users) {
+    const names=Object.fromEntries(users.map(u=>[u.user_id,u]));
+    const ranked=(rows||[]).filter(r=>r.platform===platform).sort((a,b)=>Number(b.views||0)-Number(a.views||0)).slice(0,10);
+    const max=Math.max(...ranked.map(r=>Number(r.views||0)),1);
+    if(!ranked.length)return '<div class="empty">Sin datos todavía.</div>';
+    return `<div class="ranking-list-v22">${ranked.map((r,i)=>{const u=names[r.user_id]||{};const name=u.names?`${u.names} ${u.surnames||""}`.trim():u.username||"Clipero";return `<div class="ranking-row-v22"><span class="ranking-pos-v22">${i+1}</span><div class="ranking-person-v22"><strong>${esc(name)}</strong><small>@${esc(u.username||"")} · ${r.video_count||0} videos</small><div class="rank-bar-v22"><span style="width:${Number(r.views||0)/max*100}%"></span></div></div><div class="ranking-value-v22"><b>${num(r.views||0)}</b><small>vistas</small></div></div>`;}).join("")}</div>`;
+  }
+
+  async function renderAdminDashboard() {
+    setHeader("Inicio","Control en vivo");
+    const activeStart=state.activePeriod?.start_date;
+    const [users,reports,socialAccounts]=await Promise.all([
+      query(state.supabase.from("admin_clipper_overview").select("*").order("username")),
+      activeStart?query(state.supabase.from("weekly_report_summary").select("*").eq("week_start",activeStart).order("total_views",{ascending:false})):Promise.resolve([]),
+      query(state.supabase.from("social_accounts").select("id,user_id,platform,account_name,channel_url,active").eq("active",true)),
+    ]);
+    const clippers=users.filter(u=>u.role==="clipper"),active=clippers.filter(u=>u.active),reportIds=reports.map(r=>r.report_id);
+    const [weekVideos,platformRows]=reportIds.length?await Promise.all([
+      query(state.supabase.from("videos").select("id,report_id,user_id,platform,views,likes,comments,shares,metrics_status").in("report_id",reportIds).is("deleted_at",null)),
+      query(state.supabase.from("weekly_report_platform_summary").select("*").in("report_id",reportIds)),
+    ]):[[],[]];
+    const aggregate=aggregatePlatformRows(platformRows),projected=reports.reduce((a,r)=>a+Number(r.total_pay??r.approved_base_pay??r.calculated_base_pay??0),0),pending=reports.filter(r=>["sent","review","observed"].includes(r.status)).length,missingPay=active.filter(c=>!c.payment_account||c.payment_required).length,errors=weekVideos.filter(v=>v.metrics_status==="error").length;
+    const platformCounts=Object.fromEntries(Object.keys(PLATFORMS).map(p=>[p,new Set(socialAccounts.filter(a=>a.platform===p).map(a=>a.user_id)).size]));
+    const selected=state.rankingPlatform||"tiktok";
+    $("#content").innerHTML=`
+      <section class="live-hero"><div class="live-hero-main"><span class="live-hero-kicker"><i></i> EN VIVO</span><h2>${esc(state.activePeriod?.name||"Período activo")}</h2><p>${state.activePeriod?periodRangeLabel(state.activePeriod):"Configura un período"}</p><div class="live-hero-meta"><span>Cierre <b>${dateTimeLabel(state.activePeriod?.submission_deadline)}</b></span><span><b>${active.length}</b> cliperos</span><span><b>${reports.length}</b> reportes</span></div></div><div class="live-hero-value"><small>Pago proyectado</small><strong>${money(projected)}</strong><span>${weekVideos.length} videos</span></div></section>
+      ${livePlatformCards(aggregate,{clickable:true,adminCounts:platformCounts})}
+      <div class="live-attention"><button class="live-attention-card" data-attention="reports"><span class="live-attention-icon">${uiIcon("report")}</span><span class="live-attention-copy"><b>${pending}</b><span>Reportes por revisar</span></span><span class="live-attention-arrow">${uiIcon("arrow")}</span></button><button class="live-attention-card" data-attention="payments"><span class="live-attention-icon">${uiIcon("wallet")}</span><span class="live-attention-copy"><b>${missingPay}</b><span>Datos de pago pendientes</span></span><span class="live-attention-arrow">${uiIcon("arrow")}</span></button><button class="live-attention-card" data-attention="metrics"><span class="live-attention-icon">${uiIcon("activity")}</span><span class="live-attention-copy"><b>${errors}</b><span>Métricas por revisar</span></span><span class="live-attention-arrow">${uiIcon("arrow")}</span></button></div>
+      <section class="card compact-card live-ranking-card"><div class="live-ranking-head"><div><h2>Ranking de cliperos</h2><p>Se actualiza cuando llegan nuevas métricas.</p></div><div class="live-tabs">${Object.keys(PLATFORMS).map(p=>`<button class="live-tab ${selected===p?"active":""}" data-rank-platform="${p}">${platformLogo(p)}<span>${esc(platformLabel(p))}</span></button>`).join("")}</div></div><div id="rankingList">${rankingRowsV22(selected,platformRows,clippers)}</div></section>`;
+    $$('[data-rank-platform]').forEach(b=>b.addEventListener("click",()=>{state.rankingPlatform=b.dataset.rankPlatform;$$('[data-rank-platform]').forEach(x=>x.classList.toggle("active",x===b));$("#rankingList").innerHTML=rankingRowsV22(state.rankingPlatform,platformRows,clippers);}));
+    $$('[data-live-platform]').forEach(b=>b.addEventListener("click",()=>openTeamPlatformModal(b.dataset.livePlatform,socialAccounts,clippers)));
+    $$('[data-attention]').forEach(b=>b.addEventListener("click",()=>{const a=b.dataset.attention;if(a==="reports")navigate("reports");else if(a==="payments")navigate("payments");else{state.videoFilterPlatform="all";navigate("reports");}}));
+    animateDynamicNumbers($("#content"));
+  }
+
+  function adminReportsTable(reports) {
+    if(!reports.length)return '<div class="empty">Todavía no existen reportes en este período.</div>';
+    const rows=reports.map(r=>{const progress=clamp((Number(r.total_views||0)/Number(r.target_views||1))*100,0,100);return `<tr><td><div class="report-person"><strong>${esc(r.names||r.username)} ${esc(r.surnames||"")}</strong><small>@${esc(r.username)}</small></div></td><td><b>${r.video_count}</b><br><small>${r.account_count} cuentas</small></td><td><div class="report-metric-main">${uiIcon("eye",13)}<b>${num(r.total_views)}</b></div><div class="report-like-line">${uiIcon("heart",11)} ${num(r.total_likes||0)}</div></td><td><div class="mini-cell-progress"><span>${Math.round(progress)}%</span><div class="progress"><span style="width:${progress}%"></span></div></div></td><td><b>${money(r.total_pay??r.approved_base_pay??r.calculated_base_pay)}</b></td><td><span class="status ${statusClass(r.status)}">${STATUS_LABELS[r.status]}</span></td><td><button class="btn btn-secondary btn-sm report-action-btn" data-admin-report="${r.report_id}">${uiIcon("arrow",14)} Evaluar</button></td></tr>`;}).join("");
+    const cards=reports.map(r=>{const progress=clamp((Number(r.total_views||0)/Number(r.target_views||1))*100,0,100);return `<button class="mobile-admin-card" data-admin-report="${r.report_id}"><div class="mobile-admin-card-head"><div><strong>${esc(r.names||r.username)} ${esc(r.surnames||"")}</strong><small>@${esc(r.username)}</small></div><span class="status ${statusClass(r.status)}">${STATUS_LABELS[r.status]}</span></div><div class="mobile-admin-metrics"><span><small>Videos</small><b>${r.video_count}</b></span><span><small>Vistas</small><b>${num(r.total_views)}</b></span><span><small>Likes</small><b>${num(r.total_likes||0)}</b></span><span><small>Pago</small><b>${money(r.total_pay??r.approved_base_pay??r.calculated_base_pay)}</b></span></div><div class="progress"><span style="width:${progress}%"></span></div></button>`;}).join("");
+    return `<div class="desktop-report-table"><table><thead><tr><th>Clipero</th><th>Videos</th><th>Métricas</th><th>Avance</th><th>Pago</th><th>Estado</th><th></th></tr></thead><tbody>${rows}</tbody></table></div><div class="mobile-report-cards">${cards}</div>`;
+  }
+
+  function stopLiveRealtime() {
+    if(state.liveChannel&&state.supabase){try{state.supabase.removeChannel(state.liveChannel);}catch(_){}}
+    state.liveChannel=null;
+    if(state.liveMetricTimer)clearInterval(state.liveMetricTimer);
+    if(state.liveRefreshTimer)clearTimeout(state.liveRefreshTimer);
+    state.liveMetricTimer=null;state.liveRefreshTimer=null;
+  }
+
+  function queueLiveRefresh(table="videos") {
+    state.liveDirtyTables=state.liveDirtyTables||new Set();state.liveDirtyTables.add(table);
+    if(state.liveRefreshTimer)clearTimeout(state.liveRefreshTimer);
+    state.liveRefreshTimer=setTimeout(async()=>{
+      if(!state.profile||document.visibilityState!=="visible")return;
+      if($("#modalLayer")?.querySelector(".modal")){state.liveDeferred=true;return;}
+      try{
+        if(state.profile.role==="clipper"&&["dashboard","videos"].includes(state.page)){
+          await loadClipperCurrentData();
+          state.page==="dashboard"?renderClipperDashboard():renderClipperVideos();
+        }else if(["admin","superadmin"].includes(state.profile.role)&&state.page==="dashboard"){
+          await loadGlobalContext();await renderAdminDashboard();
+        }else if(["admin","superadmin"].includes(state.profile.role)&&state.page==="reports"){
+          await renderAdminReports();
+        }
+        if(table==="announcements")await refreshAnnouncementBadge();
+        $("#content")?.classList.add("live-flash");setTimeout(()=>$("#content")?.classList.remove("live-flash"),720);
+      }catch(error){console.warn("Realtime refresh omitido",error);}
+      finally{state.liveDirtyTables?.clear();}
+    },650);
+  }
+
+  function startLiveRealtime() {
+    if(!state.supabase||!state.profile)return;
+    if(state.liveChannel){try{state.supabase.removeChannel(state.liveChannel);}catch(_){}}
+    const isAdmin=["admin","superadmin"].includes(state.profile.role);
+    let channel=state.supabase.channel(`clipcontrol-live-${state.profile.id}-${Date.now()}`);
+    const videoCfg={event:"*",schema:"public",table:"videos"};if(!isAdmin)videoCfg.filter=`user_id=eq.${state.profile.id}`;
+    const reportCfg={event:"*",schema:"public",table:"weekly_reports"};if(!isAdmin)reportCfg.filter=`user_id=eq.${state.profile.id}`;
+    channel=channel.on("postgres_changes",videoCfg,()=>queueLiveRefresh("videos"))
+      .on("postgres_changes",reportCfg,()=>queueLiveRefresh("weekly_reports"))
+      .on("postgres_changes",{event:"*",schema:"public",table:"announcements"},()=>queueLiveRefresh("announcements"))
+      .on("postgres_changes",{event:"*",schema:"public",table:"reporting_periods"},()=>queueLiveRefresh("reporting_periods"));
+    state.liveChannel=channel.subscribe(status=>{
+      if(status==="SUBSCRIBED")setLiveStatus("connected","En vivo");
+      else if(status==="CHANNEL_ERROR"||status==="TIMED_OUT")setLiveStatus("error","Reconectando");
+      else setLiveStatus("syncing","Conectando");
+    });
+  }
+
+  async function runLiveMetricSync(silent=true) {
+    if(!state.profile||state.liveMetricBusy||document.visibilityState!=="visible")return;
+    if(state.settings?.metrics_live_enabled===false)return;
+    state.liveMetricBusy=true;state.lastLiveMetricAttempt=Date.now();setLiveStatus("syncing","Sincronizando");
+    try{
+      const isAdmin=["admin","superadmin"].includes(state.profile.role);const limit=Math.max(1,Math.min(Number(state.settings?.metrics_live_batch_size||60),100));
+      await invokeProcessor({action:isAdmin?"sync_due_metrics":"sync_my_due_metrics",limit});
+      setLiveStatus("connected","En vivo");
+    }catch(error){console.warn("Sincronización LIVE omitida:",error);setLiveStatus("connected","En vivo");}
+    finally{state.liveMetricBusy=false;}
+  }
+
+  function startLiveMetricsEngine() {
+    if(state.liveMetricTimer)clearInterval(state.liveMetricTimer);
+    const minutes=Math.max(Number(state.settings?.metrics_live_interval_minutes||15),5);
+    setTimeout(()=>runLiveMetricSync(true),2500);
+    state.liveMetricTimer=setInterval(()=>runLiveMetricSync(true),minutes*60*1000);
+  }
+
+  async function loadSignedUser(recordLogin=false) {
+    showLoading(true);
+    try{
+      const userId=state.session?.user?.id;
+      state.profile=await query(state.supabase.from("profiles").select("*").eq("id",userId).single());
+      if(!state.profile.active){await state.supabase.auth.signOut();throw new Error("Tu cuenta está desactivada. Comunícate con administración.");}
+      if(recordLogin){try{const updated=await query(state.supabase.rpc("record_my_login"));if(updated?.id)state.profile=updated;}catch(error){console.warn("No se pudo registrar último login",error);}}
+      showApp();state.page="dashboard";await renderPage(true);startPresenceHeartbeat();startLiveRealtime();startLiveMetricsEngine();
+      if(state.profile.role==="clipper"&&!profileComplete(state.profile))openProfileModal(true);else await showMandatoryAnnouncements();
+    }catch(error){toast(errorMessage(error),"error");await state.supabase.auth.signOut();}
+    finally{showLoading(false);}
+  }
+
+  async function logout() {
+    stopLiveRealtime();stopPresenceHeartbeat();showLoading(true);
+    try{await touchPresence(true);await state.supabase.auth.signOut();}
+    finally{state.session=null;state.profile=null;state.currentReportId=null;showLogin();showLoading(false);setLiveStatus("syncing","Conectando");}
+  }
+
+
+
+
+  function videosTable(videos, accounts, admin = false, editable = false) {
+    const accountMap=Object.fromEntries((accounts||[]).map(a=>[a.id,a]));
+    if(!videos.length)return '<div class="empty">Todavía no hay videos registrados.</div>';
+    const rows=videos.map(video=>{
+      const account=accountMap[video.account_id]||{},canManage=admin||editable;
+      const syncButton=admin?`<button class="btn btn-secondary btn-sm btn-icon-only" data-sync-video="${video.id}" title="Sincronizar ahora" aria-label="Sincronizar ahora">${uiIcon("sync",14)}</button>`:"";
+      const actions=`<div class="actions table-actions">${syncButton}${canManage?`<button class="btn btn-ghost btn-sm" data-edit-video="${video.id}">Editar</button><button class="btn btn-danger btn-sm" data-delete-video="${video.id}">Anular</button>`:""}</div>`;
+      const thumb=video.thumbnail_url?`<img class="video-thumb" src="${esc(video.thumbnail_url)}" alt="" loading="lazy" referrerpolicy="no-referrer">`:`<span class="video-thumb" style="display:grid;place-items:center">${platformLogo(video.platform)}</span>`;
+      const views=Number(video.views||0)>0?num(video.views):'<span class="muted">Pendiente</span>';
+      return `<tr><td><b>${video.position}</b></td><td>${platformBadge(video.platform,true)}<br><small>${esc(account.account_name||"—")}</small></td><td><div style="display:flex;align-items:center;gap:8px;min-width:0">${thumb}<div style="min-width:0"><a href="${esc(video.video_url)}" target="_blank" rel="noopener">Abrir video</a>${video.external_title?`<small class="muted" style="display:block;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(video.external_title)}</small>`:""}</div></div></td><td><div class="report-metric-main">${uiIcon("eye",13)}<b>${views}</b></div></td><td><div class="report-like-line">${uiIcon("heart",11)} ${num(video.likes||0)} likes</div><small>${num(video.comments||0)} comentarios · ${num(video.shares||0)} compartidos</small></td><td>${metricStatus(video)}<br><small>${dateTimeLabel(video.metrics_checked_at)}</small></td>${admin?`<td>${dateTimeLabel(video.created_at)}</td>`:""}<td>${actions}</td></tr>`;
+    }).join("");
+    return `<div class="table-wrap compact-table video-table"><table><thead><tr><th>N.°</th><th>Red / Cuenta</th><th>Video</th><th>Vistas</th><th>Interacciones</th><th>Estado</th>${admin?"<th>Fecha</th>":""}<th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+
+  function errorMessage(error) {
+    const msg=error?.message||String(error||"Error inesperado");
+    if(/metrics_live_enabled|metrics_live_interval_minutes|metrics_live_batch_size|realtime_ui_enabled|sync_my_due_metrics/i.test(msg))return "Falta instalar la actualización SQL/Edge Function de ClipControl 2.2 LIVE.";
+    if(/announcements|announcement_receipts|my_visible_announcements|announcement_admin_summary|period_report_snapshots|last_login_at|last_seen_at|login_count|record_my_login|touch_my_presence|rollover_periods_if_due|freeze_period_metrics|admin_close_active_period|admin_reopen_period/i.test(msg))return "Falta ejecutar el SQL 18 de ClipControl 2.1 en Supabase.";
+    if(/weekly_report_platform_summary|reporting_periods|platform_payment_rules|update_my_profile_v20|admin_set_active_period|admin_save_platform_payment_rule/i.test(msg))return "Falta ejecutar el SQL 16 de ClipControl 2.0 en Supabase.";
+    if(/duplicate key|videos_unique_active_url/i.test(msg))return "Ese enlace de video ya fue registrado.";
+    if(/videos_unique_active_position/i.test(msg))return "Ya existe un video en esa posición.";
+    if(/Invalid login credentials/i.test(msg))return "Usuario o contraseña incorrectos.";
+    if(/Email not confirmed/i.test(msg))return "La cuenta todavía no está confirmada en Supabase.";
+    if(/save_video_batch|Could not find the function/i.test(msg))return "Falta ejecutar las actualizaciones SQL de ClipControl.";
+    if(/row-level security|permission denied/i.test(msg))return "Supabase bloqueó la operación por permisos. Verifica las migraciones y vuelve a iniciar sesión.";
+    if(/El reporte está cerrado|plazo de envío terminó/i.test(msg))return "El reporte ya está cerrado. Administración debe habilitar la edición fuera de plazo.";
+    return msg;
+  }
+
+
+
+  /* ===================================================================
+     CLIPCONTROL 2.2.4 · REPORTES = INICIO / LEGIBILIDAD / ESTADOS
+     - El administrador ya no tiene un dashboard separado.
+     - "Inicio" es directamente la evaluación de reportes del período.
+     - Estados y acciones usan color semántico y mejor contraste.
+     - En móvil, los reportes son tarjetas compactas sin scroll horizontal.
+     =================================================================== */
+
+  function statusClass(status) {
+    if (status === "draft") return "st-draft";
+    if (status === "sent") return "st-sent";
+    if (status === "review") return "st-review";
+    if (status === "observed") return "st-observed";
+    if (status === "approved") return "st-approved";
+    if (status === "pending_payment") return "st-pending";
+    if (status === "paid") return "st-paid";
+    if (status === "closed") return "st-closed";
+    if (status === "expired") return "st-expired";
+    return "st-draft";
+  }
+
+  function statusBadge(status) {
+    const label = STATUS_LABELS[status] || status || "Estado";
+    return `<span class="status status-v224 ${statusClass(status)}"><i></i>${esc(label)}</span>`;
+  }
+
+  function navigate(page) {
+    const admin = ["admin","superadmin"].includes(state.profile?.role);
+    state.page = admin && page === "reports" ? "dashboard" : page;
+    buildNav();
+    renderPage(true);
+  }
+
+  function buildNav() {
+    if (!state.profile) return;
+    const isAdmin = ["admin","superadmin"].includes(state.profile.role);
+    if (isAdmin && state.page === "reports") state.page = "dashboard";
+
+    const items = isAdmin
+      ? [["dashboard","home","Inicio"],["clippers","users","Accesos"],["payments","wallet","Pagos"],["announcements","megaphone","Comunicados"],["settings","settings","Ajustes"]]
+      : [["dashboard","home","Inicio"],["videos","video","Videos"],["networks","network","Redes"],["history","history","Historial"],["profile","user","Perfil"]];
+
+    $("#nav").innerHTML = items.map(([id,icon,label]) =>
+      `<button data-page="${id}" class="${state.page===id?"active":""}">${navIcon(icon)}<span class="nav-label">${label}</span></button>`
+    ).join("");
+
+    $$('[data-page]', $("#nav")).forEach(button => button.addEventListener("click", async () => {
+      state.page = button.dataset.page;
+      state.selectedClipperId = null;
+      $("#sidebar").classList.remove("open");
+      buildNav();
+      await touchPresence(true);
+      await renderPage(true);
+    }));
+
+    const mobile = isAdmin
+      ? [["dashboard","home","Inicio"],["clippers","users","Accesos"],["payments","wallet","Pagos"],["announcements","megaphone","Avisos"],["settings","settings","Ajustes"]]
+      : [["dashboard","home","Inicio"],["videos","video","Videos"],["__add","plus","Agregar"],["history","history","Historial"],["profile","user","Perfil"]];
+
+    const nav = $("#mobileNav");
+    if (nav) {
+      nav.innerHTML = mobile.map(([id,icon,label]) =>
+        `<button data-mobile-page="${id}" class="${state.page===id?"active":""} ${id==="__add"?"mobile-add":""}">${uiIcon(icon,18)}${id==="__add"?"":`<span>${label}</span>`}</button>`
+      ).join("");
+      $$('[data-mobile-page]', nav).forEach(button => button.addEventListener("click", async () => {
+        if (button.dataset.mobilePage === "__add") return handleQuickRegisterAction();
+        state.page = button.dataset.mobilePage;
+        state.selectedClipperId = null;
+        buildNav();
+        await touchPresence(true);
+        await renderPage(true);
+      }));
+    }
+  }
+
+  async function renderAdminPage() {
+    if (state.page === "dashboard" || state.page === "reports") return renderAdminReports();
+    if (state.page === "clippers") return state.selectedClipperId ? renderClipperAdminDetail() : renderAdminClippers();
+    if (state.page === "payments") return renderAdminPayments();
+    if (state.page === "announcements") return renderAdminAnnouncements();
+    if (state.page === "settings") return renderAdminSettings();
+    state.page = "dashboard";
+    return renderAdminReports();
+  }
+
+  async function renderAdminDashboard() {
+    return renderAdminReports();
+  }
+
+  async function renderAdminReports() {
+    setHeader("Inicio", "Evaluación del período");
+    const periods = await query(state.supabase.from("reporting_periods").select("*").order("start_date",{ascending:false}).limit(20));
+    if (!state.adminWeek) state.adminWeek = state.activePeriod?.start_date || periods?.[0]?.start_date || currentWeekStartISO();
+    const reports = await query(state.supabase.from("weekly_report_summary").select("*").eq("week_start",state.adminWeek).order("total_views",{ascending:false}));
+    const ids = reports.map(r=>r.report_id);
+    const platformRows = ids.length ? await query(state.supabase.from("weekly_report_platform_summary").select("*").in("report_id",ids)) : [];
+    state.adminPlatformRows = platformRows;
+    const aggregate = aggregatePlatformRows(platformRows);
+    const pending = reports.filter(r=>["sent","review","observed"].includes(r.status)).length;
+    const projected = reports.reduce((sum,r)=>sum+Number(r.total_pay??r.approved_base_pay??r.calculated_base_pay??0),0);
+    const selectedPeriod = periods.find(p=>p.start_date===state.adminWeek);
+
+    $("#content").innerHTML = `
+      <section class="reports-home-v224">
+        <div class="reports-home-top">
+          <div>
+            <span class="reports-kicker">PERÍODO</span>
+            <h2>${esc(selectedPeriod?.name || periodRangeLabel(selectedPeriod) || state.adminWeek)}</h2>
+            <p>${selectedPeriod?.is_active ? '<span class="period-live-dot"></span>Activo' : 'Histórico'} · ${reports.length} cliperos</p>
+          </div>
+          <div class="reports-home-actions">
+            <label class="period-select-v224">${uiIcon("history",15)}<select id="reportPeriodSelect">${periods.map(p=>`<option value="${p.start_date}" ${p.start_date===state.adminWeek?"selected":""}>${esc(p.name||periodRangeLabel(p))}${p.is_active?" · ACTIVO":""}</option>`).join("")}</select></label>
+            <button id="exportReportsBtn" class="btn btn-secondary btn-sm">${uiIcon("report",14)} Excel</button>
+          </div>
+        </div>
+        ${livePlatformCards(aggregate)}
+        <div class="report-mini-summary-v224">
+          <div><span>Reportes</span><strong>${reports.length}</strong></div>
+          <div><span>Por revisar</span><strong>${pending}</strong></div>
+          <div><span>Pago proyectado</span><strong>${money(projected)}</strong></div>
+          <div><span>Cierre</span><strong>${dateOnlyLabel(selectedPeriod?.end_date||reports[0]?.week_end)}</strong></div>
+        </div>
+      </section>
+      <section class="card report-list-card-v224">
+        <div class="report-list-head-v224"><div><h2>Evaluar cliperos</h2><p>Estado, avance y pago en una sola vista.</p></div><span class="report-live-note"><i></i> En vivo</span></div>
+        ${adminReportsTable(reports)}
+      </section>`;
+
+    $("#reportPeriodSelect")?.addEventListener("change",e=>{state.adminWeek=e.target.value;renderAdminReports();});
+    $("#exportReportsBtn")?.addEventListener("click",()=>exportWeeklyExcel(reports));
+    bindAdminReportButtons();
+    animateDynamicNumbers($("#content"));
+  }
+
+  function adminReportsTable(reports) {
+    if (!reports.length) return '<div class="empty">Todavía no existen reportes en este período.</div>';
+    const rows = reports.map(r => {
+      const progress = clamp((Number(r.total_views||0)/Number(r.target_views||1))*100,0,100);
+      const rowTone = `row-${statusClass(r.status)}`;
+      return `<tr class="report-row-v224 ${rowTone}">
+        <td><div class="report-person report-person-v224"><strong>${esc(r.names||r.username)} ${esc(r.surnames||"")}</strong><small>@${esc(r.username)}</small></div></td>
+        <td><div class="report-number-v224"><b>${r.video_count}</b><small>${r.account_count} cuenta${Number(r.account_count)===1?"":"s"}</small></div></td>
+        <td><div class="report-metric-main metric-main-v224">${uiIcon("eye",14)}<b>${num(r.total_views)}</b></div><div class="report-like-line metric-like-v224">${uiIcon("heart",12)} ${num(r.total_likes||0)}</div></td>
+        <td><div class="mini-cell-progress progress-v224"><span>${Math.round(progress)}%</span><div class="progress"><span style="width:${progress}%"></span></div></div></td>
+        <td><b class="report-pay-v224">${money(r.total_pay??r.approved_base_pay??r.calculated_base_pay)}</b></td>
+        <td>${statusBadge(r.status)}</td>
+        <td><button class="btn btn-sm report-evaluate-btn-v224" data-admin-report="${r.report_id}">${uiIcon("arrow",14)}<span>Evaluar</span></button></td>
+      </tr>`;
+    }).join("");
+
+    const cards = reports.map(r => {
+      const progress = clamp((Number(r.total_views||0)/Number(r.target_views||1))*100,0,100);
+      return `<article class="mobile-report-card-v224 row-${statusClass(r.status)}">
+        <div class="mobile-report-head-v224"><div class="report-person-v224"><strong>${esc(r.names||r.username)} ${esc(r.surnames||"")}</strong><small>@${esc(r.username)}</small></div>${statusBadge(r.status)}</div>
+        <div class="mobile-report-stats-v224">
+          <div><span>Videos</span><b>${r.video_count}</b></div>
+          <div><span>Vistas</span><b>${num(r.total_views)}</b></div>
+          <div><span>Likes</span><b>${num(r.total_likes||0)}</b></div>
+          <div><span>Pago</span><b>${money(r.total_pay??r.approved_base_pay??r.calculated_base_pay)}</b></div>
+        </div>
+        <div class="mobile-progress-line-v224"><span>Avance <b>${Math.round(progress)}%</b></span><div class="progress"><span style="width:${progress}%"></span></div></div>
+        <button class="btn report-evaluate-btn-v224 mobile-evaluate-v224" data-admin-report="${r.report_id}">${uiIcon("arrow",15)}<span>Evaluar reporte</span></button>
+      </article>`;
+    }).join("");
+
+    return `<div class="desktop-report-table desktop-report-table-v224"><table><thead><tr><th>Clipero</th><th>Videos</th><th>Métricas</th><th>Avance</th><th>Pago</th><th>Estado</th><th></th></tr></thead><tbody>${rows}</tbody></table></div><div class="mobile-report-cards mobile-report-cards-v224">${cards}</div>`;
+  }
+
+  function renderClipperDashboard() {
+    setHeader("Inicio","Métricas en vivo");
+    const s=state.currentSummary,rows=state.platformSummary||[];
+    const paid=rows.find(r=>r.pay_enabled)||rows.find(r=>r.platform==="tiktok")||{platform:"tiktok",views:0,target_views:250000,calculated_pay:0,max_base_pay:300,video_count:0};
+    const target=Math.max(Number(paid.target_views||0),1),views=Number(paid.views||0),progress=clamp(views/target*100,0,100);
+    const editable=reportEditable(s),deadlinePassed=s?.submission_deadline&&Date.now()>new Date(s.submission_deadline).getTime();
+    $("#content").innerHTML=`
+      <section class="live-hero"><div class="live-hero-main"><span class="live-hero-kicker"><i></i> PERÍODO ACTIVO</span><h2>Hola, ${esc(state.profile.names||state.profile.username)}</h2><p>${periodRangeLabel(s)}</p><div class="live-hero-meta"><span>Cierre <b>${dateTimeLabel(s.submission_deadline)}</b></span><span><b>${s.video_count||0}</b> videos</span><span>${deadlinePassed?"Cerrando":"Abierto"}</span></div></div><div class="live-hero-value"><small>Pago estimado</small><strong>${money(s.calculated_base_pay||0)}</strong><span>En vivo</span></div></section>
+      <section class="live-paid-card"><div><span class="paid-card-label">${platformLogo(paid.platform)} ${esc(platformLabel(paid.platform))} · REMUNERADO</span><div class="paid-card-title"><span data-count="${views}">${num(views)}</span> vistas</div><div class="paid-card-sub">Meta ${num(target)} · ${Math.round(progress)}%</div><div class="paid-progress"><span style="width:${progress}%"></span></div></div><div class="paid-side"><small>Pago actual</small><strong>${money(paid.calculated_pay||0)}</strong><span>Máximo ${money(paid.max_base_pay||0)}</span></div></section>
+      ${livePlatformCards(rows)}
+      <div class="clipper-quick-actions"><div class="primary-action-panel"><div><h3>Registrar videos</h3><p>Pega uno o varios enlaces.</p></div><button id="quickAddBtn" class="btn btn-primary" ${!editable?"disabled":""}>${uiIcon("plus")} Agregar videos</button></div><div class="submit-mini-panel submit-mini-panel-v224"><div><small>Reporte</small>${statusBadge(s.status)}</div><button id="submitReportBtn" class="btn btn-secondary" ${!editable||s.can_submit===false||Number(s.video_count||0)<1?"disabled":""}>${uiIcon("check")} ${s.submitted_at?"Actualizar":"Enviar"}</button></div></div>
+      <section class="card compact-card" style="margin-top:12px"><div class="card-head"><div><h2>Videos recientes</h2><p>Actualización automática</p></div><button id="viewVideosBtn" class="btn btn-ghost btn-sm">Ver todos ${uiIcon("arrow",14)}</button></div>${recentVideoCards(state.videos)}</section>`;
+    $("#quickAddBtn")?.addEventListener("click",handleQuickRegisterAction);
+    $("#submitReportBtn")?.addEventListener("click",submitCurrentReport);
+    $("#viewVideosBtn")?.addEventListener("click",()=>{state.videoFilterPlatform="all";navigate("videos");});
+    animateDynamicNumbers($("#content"));
   }
 
   window.addEventListener("DOMContentLoaded", init);
