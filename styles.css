@@ -900,3 +900,19 @@ body.theme-dark .status.st-pending{color:#c1adff!important;background:#241b42!im
 @media(max-width:360px){
   .reports-home-actions{grid-template-columns:1fr}.reports-home-actions .btn{width:100%!important}.report-mini-summary-v224{grid-template-columns:1fr 1fr}.mobile-report-head-v224{align-items:flex-start}.mobile-report-stats-v224{grid-template-columns:1fr 1fr}.status-v224{white-space:nowrap}
 }
+
+
+/* ============================================================
+   CLIPCONTROL 2.2.6 — STABLE LIVE
+   La UI ya no parpadea por cada ciclo de sincronización.
+   Solo una subida real recibe una microanimación discreta.
+   ============================================================ */
+.metric-rise{
+  animation:metricRise226 .72s ease-out;
+}
+@keyframes metricRise226{
+  0%{filter:brightness(1);transform:translateY(0)}
+  30%{filter:brightness(1.28);transform:translateY(-1px)}
+  100%{filter:brightness(1);transform:translateY(0)}
+}
+@media (prefers-reduced-motion:reduce){.metric-rise{animation:none!important}}

@@ -67,6 +67,10 @@
     selectedClipperTab: "info",
     selectedPlatform: "tiktok",
     adminWeek: currentWeekStartISO(),
+    liveVideoMetricCache: new Map(),
+    liveReportStatusCache: new Map(),
+    liveCounterValues: new Map(),
+    liveMetricCacheReady: false,
   };
 
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -1629,16 +1633,33 @@
 
   function animateDynamicNumbers(root = document) {
     const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
-    $$('[data-count]', root).forEach((el) => {
-      const target = Number(el.dataset.count || 0);
-      if (reduce || target <= 0) { el.textContent = num(target); return; }
-      const start = performance.now();
-      const duration = 520;
+    state.liveCounterValues = state.liveCounterValues || new Map();
+    $$('[data-count]', root).forEach((el, index) => {
+      const requested = Math.max(0, Number(el.dataset.count || 0));
+      const key = el.dataset.countKey || `anon:${state.currentReportId || state.adminWeek || "current"}:${index}`;
+      const known = state.liveCounterValues.has(key) ? Number(state.liveCounterValues.get(key) || 0) : null;
+
+      // En una misma campaña una métrica pública nunca debe bailar hacia abajo.
+      // Si un scraper devuelve temporalmente menos, mantenemos el último valor visible.
+      const target = known === null ? requested : Math.max(known, requested);
+      const from = known === null ? target : known;
+      state.liveCounterValues.set(key, target);
+
+      if (reduce || target <= from) {
+        el.textContent = num(target);
+        return;
+      }
+
+      const startAt = performance.now();
+      const duration = 420;
+      const delta = target - from;
+      el.classList.add("metric-rise");
       const tick = (now) => {
-        const p = Math.min((now - start) / duration, 1);
+        const p = Math.min((now - startAt) / duration, 1);
         const eased = 1 - Math.pow(1 - p, 3);
-        el.textContent = num(Math.round(target * eased));
+        el.textContent = num(Math.round(from + delta * eased));
         if (p < 1) requestAnimationFrame(tick);
+        else setTimeout(() => el.classList.remove("metric-rise"), 520);
       };
       requestAnimationFrame(tick);
     });
@@ -2767,7 +2788,9 @@
       const click=options.clickable?`type="button" data-live-platform="${platform}"`:"";
       const footLeft=extra!==undefined?`${extra} clipero${extra===1?"":"s"}`:`${Number(row.video_count||0)} video${Number(row.video_count||0)===1?"":"s"}`;
       const footRight=row.pay_enabled?money(row.calculated_pay||0):`${num(row.likes||0)} likes`;
-      return `<${options.clickable?"button":"article"} ${click} class="live-platform-card ${platform}">${platformBadge(platform,true)}<strong data-count="${Number(row.views||0)}">${num(row.views||0)}</strong><small>Vistas</small><div class="live-platform-card-foot"><span>${esc(footLeft)}</span><b>${esc(footRight)}</b></div></${options.clickable?"button":"article"}>`;
+      const periodKey=state.currentReportId||state.adminWeek||state.activePeriod?.id||"current";
+      const countKey=`platform:${state.profile?.id||"anon"}:${periodKey}:${platform}:views`;
+      return `<${options.clickable?"button":"article"} ${click} class="live-platform-card ${platform}">${platformBadge(platform,true)}<strong data-count="${Number(row.views||0)}" data-count-key="${esc(countKey)}">${num(row.views||0)}</strong><small>Vistas</small><div class="live-platform-card-foot"><span>${esc(footLeft)}</span><b>${esc(footRight)}</b></div></${options.clickable?"button":"article"}>`;
     }).join("")}</div>`;
   }
 
@@ -2784,7 +2807,7 @@
     const editable=reportEditable(s),deadlinePassed=s?.submission_deadline&&Date.now()>new Date(s.submission_deadline).getTime();
     $("#content").innerHTML=`
       <section class="live-hero"><div class="live-hero-main"><span class="live-hero-kicker"><i></i> PERÍODO ACTIVO</span><h2>Hola, ${esc(state.profile.names||state.profile.username)}</h2><p>${periodRangeLabel(s)}</p><div class="live-hero-meta"><span>Cierre <b>${dateTimeLabel(s.submission_deadline)}</b></span><span><b>${s.video_count||0}</b> videos</span><span>${deadlinePassed?"Cerrando":"Abierto"}</span></div></div><div class="live-hero-value"><small>Pago estimado</small><strong>${money(s.calculated_base_pay||0)}</strong><span>En vivo</span></div></section>
-      <section class="live-paid-card"><div><span class="paid-card-label">${platformLogo(paid.platform)} ${esc(platformLabel(paid.platform))} · REMUNERADO</span><div class="paid-card-title"><span data-count="${views}">${num(views)}</span> vistas</div><div class="paid-card-sub">Meta ${num(target)} · ${Math.round(progress)}%</div><div class="paid-progress"><span style="width:${progress}%"></span></div></div><div class="paid-side"><small>Pago actual</small><strong>${money(paid.calculated_pay||0)}</strong><span>Máximo ${money(paid.max_base_pay||0)}</span></div></section>
+      <section class="live-paid-card"><div><span class="paid-card-label">${platformLogo(paid.platform)} ${esc(platformLabel(paid.platform))} · REMUNERADO</span><div class="paid-card-title"><span data-count="${views}" data-count-key="${esc(`paid:${state.profile?.id||"anon"}:${state.currentReportId||"current"}:${paid.platform}:views`)}">${num(views)}</span> vistas</div><div class="paid-card-sub">Meta ${num(target)} · ${Math.round(progress)}%</div><div class="paid-progress"><span style="width:${progress}%"></span></div></div><div class="paid-side"><small>Pago actual</small><strong>${money(paid.calculated_pay||0)}</strong><span>Máximo ${money(paid.max_base_pay||0)}</span></div></section>
       ${livePlatformCards(rows)}
       <div class="clipper-quick-actions"><div class="primary-action-panel"><div><h3>Registrar videos</h3><p>Pega uno o varios enlaces. Las métricas se detectan solas.</p></div><button id="quickAddBtn" class="btn btn-primary" ${!editable?"disabled":""}>${uiIcon("plus")} Agregar videos</button></div><div class="submit-mini-panel"><div><small>Reporte</small><strong>${STATUS_LABELS[s.status]}</strong></div><button id="submitReportBtn" class="btn btn-secondary" ${!editable||s.can_submit===false||Number(s.video_count||0)<1?"disabled":""}>${uiIcon("check")} ${s.submitted_at?"Actualizar":"Enviar"}</button></div></div>
       <section class="card compact-card" style="margin-top:12px"><div class="card-head"><div><h2>Videos recientes</h2><p>Actualización automática</p></div><button id="viewVideosBtn" class="btn btn-ghost btn-sm">Ver todos ${uiIcon("arrow",14)}</button></div>${recentVideoCards(state.videos)}</section>`;
@@ -2842,7 +2865,94 @@
     state.liveMetricTimer=null;state.liveRefreshTimer=null;
   }
 
-  function queueLiveRefresh(table="videos") {
+  function metricTuple(row = {}) {
+    return {
+      views: Math.max(0, Number(row.views || 0)),
+      likes: Math.max(0, Number(row.likes || 0)),
+      comments: Math.max(0, Number(row.comments || 0)),
+      shares: Math.max(0, Number(row.shares || 0)),
+    };
+  }
+
+  function hasMetricIncrease(previous, next) {
+    if (!previous) return false;
+    return next.views > previous.views || next.likes > previous.likes || next.comments > previous.comments || next.shares > previous.shares;
+  }
+
+  async function seedLiveMetricCache() {
+    state.liveVideoMetricCache = new Map();
+    try {
+      if (!state.profile) return;
+      const isAdmin = ["admin", "superadmin"].includes(state.profile.role);
+      if (!isAdmin) {
+        for (const video of state.videos || []) state.liveVideoMetricCache.set(video.id, metricTuple(video));
+        state.liveMetricCacheReady = true;
+        return;
+      }
+
+      let reportIds = Array.isArray(state.adminReportIds) ? state.adminReportIds.filter(Boolean) : [];
+      if (!reportIds.length && state.adminWeek) {
+        const rows = await query(state.supabase.from("weekly_reports").select("id").eq("week_start", state.adminWeek));
+        reportIds = (rows || []).map(r => r.id);
+      }
+      if (!reportIds.length) { state.liveMetricCacheReady = true; return; }
+
+      let from = 0;
+      const pageSize = 750;
+      while (true) {
+        const { data, error } = await state.supabase.from("videos")
+          .select("id,views,likes,comments,shares")
+          .in("report_id", reportIds)
+          .is("deleted_at", null)
+          .range(from, from + pageSize - 1);
+        if (error) throw error;
+        for (const video of data || []) state.liveVideoMetricCache.set(video.id, metricTuple(video));
+        if (!data || data.length < pageSize) break;
+        from += pageSize;
+      }
+      state.liveMetricCacheReady = true;
+    } catch (error) {
+      console.warn("No se pudo preparar el cache LIVE", error);
+      state.liveMetricCacheReady = true;
+    }
+  }
+
+  function shouldRefreshVideoPayload(payload) {
+    const type = String(payload?.eventType || "").toUpperCase();
+    if (type === "INSERT" || type === "DELETE") return true;
+    if (type !== "UPDATE") return false;
+    const row = payload?.new || {};
+    if (!row.id) return false;
+    const next = metricTuple(row);
+    const previous = state.liveVideoMetricCache.get(row.id);
+    state.liveVideoMetricCache.set(row.id, previous ? {
+      views: Math.max(previous.views, next.views),
+      likes: Math.max(previous.likes, next.likes),
+      comments: Math.max(previous.comments, next.comments),
+      shares: Math.max(previous.shares, next.shares),
+    } : next);
+
+    // Los cambios syncing/error/checked_at/next_check_at no redibujan la pantalla.
+    // Solo una subida real de una métrica provoca actualización visual.
+    return hasMetricIncrease(previous, next);
+  }
+
+  function shouldRefreshReportPayload(payload) {
+    const type = String(payload?.eventType || "").toUpperCase();
+    if (type === "INSERT" || type === "DELETE") return true;
+    if (type !== "UPDATE") return false;
+    const row = payload?.new || {};
+    if (!row.id) return false;
+    const nextStatus = String(row.status || "");
+    const previousStatus = state.liveReportStatusCache.get(row.id);
+    state.liveReportStatusCache.set(row.id, nextStatus);
+    return previousStatus !== undefined && nextStatus !== previousStatus;
+  }
+
+  function queueLiveRefresh(table="videos", payload=null) {
+    if (table === "videos" && payload && !shouldRefreshVideoPayload(payload)) return;
+    if (table === "weekly_reports" && payload && !shouldRefreshReportPayload(payload)) return;
+
     state.liveDirtyTables=state.liveDirtyTables||new Set();state.liveDirtyTables.add(table);
     if(state.liveRefreshTimer)clearTimeout(state.liveRefreshTimer);
     state.liveRefreshTimer=setTimeout(async()=>{
@@ -2852,29 +2962,30 @@
         if(state.profile.role==="clipper"&&["dashboard","videos"].includes(state.page)){
           await loadClipperCurrentData();
           state.page==="dashboard"?renderClipperDashboard():renderClipperVideos();
-        }else if(["admin","superadmin"].includes(state.profile.role)&&state.page==="dashboard"){
-          await loadGlobalContext();await renderAdminDashboard();
-        }else if(["admin","superadmin"].includes(state.profile.role)&&state.page==="reports"){
+          await seedLiveMetricCache();
+        }else if(["admin","superadmin"].includes(state.profile.role)&&(state.page==="dashboard"||state.page==="reports")){
+          await loadGlobalContext();
           await renderAdminReports();
+          await seedLiveMetricCache();
         }
         if(table==="announcements")await refreshAnnouncementBadge();
-        $("#content")?.classList.add("live-flash");setTimeout(()=>$("#content")?.classList.remove("live-flash"),720);
       }catch(error){console.warn("Realtime refresh omitido",error);}
       finally{state.liveDirtyTables?.clear();}
-    },650);
+    },900);
   }
 
-  function startLiveRealtime() {
+  async function startLiveRealtime() {
     if(!state.supabase||!state.profile)return;
     if(state.liveChannel){try{state.supabase.removeChannel(state.liveChannel);}catch(_){}}
+    await seedLiveMetricCache();
     const isAdmin=["admin","superadmin"].includes(state.profile.role);
     let channel=state.supabase.channel(`clipcontrol-live-${state.profile.id}-${Date.now()}`);
     const videoCfg={event:"*",schema:"public",table:"videos"};if(!isAdmin)videoCfg.filter=`user_id=eq.${state.profile.id}`;
     const reportCfg={event:"*",schema:"public",table:"weekly_reports"};if(!isAdmin)reportCfg.filter=`user_id=eq.${state.profile.id}`;
-    channel=channel.on("postgres_changes",videoCfg,()=>queueLiveRefresh("videos"))
-      .on("postgres_changes",reportCfg,()=>queueLiveRefresh("weekly_reports"))
-      .on("postgres_changes",{event:"*",schema:"public",table:"announcements"},()=>queueLiveRefresh("announcements"))
-      .on("postgres_changes",{event:"*",schema:"public",table:"reporting_periods"},()=>queueLiveRefresh("reporting_periods"));
+    channel=channel.on("postgres_changes",videoCfg,(payload)=>queueLiveRefresh("videos",payload))
+      .on("postgres_changes",reportCfg,(payload)=>queueLiveRefresh("weekly_reports",payload))
+      .on("postgres_changes",{event:"*",schema:"public",table:"announcements"},(payload)=>queueLiveRefresh("announcements",payload))
+      .on("postgres_changes",{event:"*",schema:"public",table:"reporting_periods"},(payload)=>queueLiveRefresh("reporting_periods",payload));
     state.liveChannel=channel.subscribe(status=>{
       if(status==="SUBSCRIBED")setLiveStatus("connected","En vivo");
       else if(status==="CHANNEL_ERROR"||status==="TIMED_OUT")setLiveStatus("error","Reconectando");
@@ -2885,12 +2996,12 @@
   async function runLiveMetricSync(silent=true) {
     if(!state.profile||state.liveMetricBusy||document.visibilityState!=="visible")return;
     if(state.settings?.metrics_live_enabled===false)return;
-    state.liveMetricBusy=true;state.lastLiveMetricAttempt=Date.now();setLiveStatus("syncing","Sincronizando");
+    state.liveMetricBusy=true;state.lastLiveMetricAttempt=Date.now();if(!silent)setLiveStatus("syncing","Actualizando");
     try{
       const isAdmin=["admin","superadmin"].includes(state.profile.role);const limit=Math.max(1,Math.min(Number(state.settings?.metrics_live_batch_size||60),100));
       await invokeProcessor({action:isAdmin?"sync_due_metrics":"sync_my_due_metrics",limit});
-      setLiveStatus("connected","En vivo");
-    }catch(error){console.warn("Sincronización LIVE omitida:",error);setLiveStatus("connected","En vivo");}
+      if(!silent)setLiveStatus("connected","En vivo");
+    }catch(error){console.warn("Sincronización LIVE omitida:",error);if(!silent)setLiveStatus("connected","En vivo");}
     finally{state.liveMetricBusy=false;}
   }
 
@@ -2955,7 +3066,7 @@
 
 
   /* ===================================================================
-     CLIPCONTROL 2.2.4 · REPORTES = INICIO / LEGIBILIDAD / ESTADOS
+     CLIPCONTROL 2.2.6 · STABLE LIVE / SOLO SUBIDAS / SIN PARPADEO
      - El administrador ya no tiene un dashboard separado.
      - "Inicio" es directamente la evaluación de reportes del período.
      - Estados y acciones usan color semántico y mejor contraste.
@@ -3049,6 +3160,8 @@
     if (!state.adminWeek) state.adminWeek = state.activePeriod?.start_date || periods?.[0]?.start_date || currentWeekStartISO();
     const reports = await query(state.supabase.from("weekly_report_summary").select("*").eq("week_start",state.adminWeek).order("total_views",{ascending:false}));
     const ids = reports.map(r=>r.report_id);
+    state.adminReportIds = ids;
+    state.liveReportStatusCache = new Map(reports.map(r => [r.report_id, String(r.status || "")]));
     const platformRows = ids.length ? await query(state.supabase.from("weekly_report_platform_summary").select("*").in("report_id",ids)) : [];
     state.adminPlatformRows = platformRows;
     const aggregate = aggregatePlatformRows(platformRows);
