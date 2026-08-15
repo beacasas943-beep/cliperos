@@ -24,30 +24,57 @@
   const DEFAULT_BATCH_ROWS = 7;
 
   async function invokeProcessor(payload) {
+    async function invokeWithToken(accessToken) {
+      const { data, error } = await state.supabase.functions.invoke(ADMIN_FUNCTION, {
+        body: payload,
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      if (error) {
+        let message = error.message || "No se pudo ejecutar la operación del servidor.";
+        let code = "";
+        try {
+          const response = error.context;
+          if (response?.clone) {
+            const details = await response.clone().json();
+            message = details?.error || details?.message || message;
+            code = details?.code || "";
+          }
+        } catch (_) {}
+        const wrapped = new Error(message);
+        wrapped.code = code;
+        throw wrapped;
+      }
+      if (data?.error) {
+        const wrapped = new Error(data.error);
+        wrapped.code = data.code || "";
+        throw wrapped;
+      }
+      return data;
+    }
+
     const { data: sessionData, error: sessionError } = await state.supabase.auth.getSession();
-    const accessToken = sessionData?.session?.access_token;
-    if (sessionError || !accessToken) {
+    let session = sessionData?.session;
+    if (sessionError || !session?.access_token) {
       throw new Error("La sesión no está disponible. Cierra sesión y vuelve a ingresar.");
     }
 
-    const { data, error } = await state.supabase.functions.invoke(ADMIN_FUNCTION, {
-      body: payload,
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
+    try {
+      return await invokeWithToken(session.access_token);
+    } catch (error) {
+      const authFailure = error?.code === "AUTH_USER_JWT_INVALID"
+        || /sesión inválida|invalid jwt|jwt expired|token.*expired/i.test(error?.message || "");
+      if (!authFailure) throw error;
 
-    if (error) {
-      let message = error.message || "No se pudo ejecutar la operación del servidor.";
-      try {
-        const response = error.context;
-        if (response?.clone) {
-          const details = await response.clone().json();
-          message = details?.error || details?.message || message;
-        }
-      } catch (_) {}
-      throw new Error(message);
+      // Un único refresco controlado. No hacemos bucles ni reintentos de Facebook.
+      const { data: refreshed, error: refreshError } = await state.supabase.auth.refreshSession();
+      session = refreshed?.session;
+      if (refreshError || !session?.access_token) {
+        throw new Error("Tu sesión venció. Cierra sesión y vuelve a ingresar.");
+      }
+      state.session = session;
+      return await invokeWithToken(session.access_token);
     }
-    if (data?.error) throw new Error(data.error);
-    return data;
   }
 
   const invokeAdminFunction = invokeProcessor;
@@ -185,6 +212,45 @@
     } catch {
       return { ok: false, url: videoUrl, reason: "No se pudo leer el enlace." };
     }
+  }
+
+
+  function facebookCdnThumbnailExpired(value) {
+    if (!value) return false;
+    try {
+      const url = new URL(value);
+      const host = normalizedHostname(url.hostname);
+      if (!host.includes("fbcdn.net") && !host.includes("fbsbx.com")) return false;
+      const oe = url.searchParams.get("oe");
+      if (!oe || !/^[0-9a-f]+$/i.test(oe)) return false;
+      const seconds = Number.parseInt(oe, 16);
+      return Number.isFinite(seconds) && seconds * 1000 < Date.now();
+    } catch { return false; }
+  }
+
+  function facebookEmbedKind(value) {
+    try {
+      const url = new URL(normalizeUrl(value));
+      const path = url.pathname.toLowerCase();
+      if (/\/share\/p\//.test(path) || /\/(posts|permalink)\//.test(path) || /\/(story\.php|photo(?:\.php)?)$/.test(path)) return "post";
+      return "video";
+    } catch { return "video"; }
+  }
+
+  function facebookEmbedSrc(value, width = 320) {
+    const normalized = normalizeUrl(value);
+    if (!normalized) return "";
+    const kind = facebookEmbedKind(normalized);
+    const endpoint = kind === "post" ? "post" : "video";
+    const height = kind === "post" ? 240 : 180;
+    return `https://www.facebook.com/plugins/${endpoint}.php?href=${encodeURIComponent(normalized)}&show_text=false&width=${width}&height=${height}&autoplay=false`;
+  }
+
+  function facebookPreviewMarkup(video, fallbackClass = "clipper-video-thumb-fallback") {
+    const fallback = `<span class="${fallbackClass}">${platformLogo("facebook")}</span>`;
+    const src = facebookEmbedSrc(video.video_url, 320);
+    const thumb = video.thumbnail_url && !facebookCdnThumbnailExpired(video.thumbnail_url) ? video.thumbnail_url : "";
+    return `${fallback}${src ? `<iframe class="facebook-card-embed" src="${esc(src)}" title="Vista previa de Facebook" loading="lazy" scrolling="no" frameborder="0" allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share" tabindex="-1" aria-hidden="true"></iframe>` : ""}${thumb ? `<img src="${esc(thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ""}`;
   }
 
   function canonicalVideoUrl(value) {
@@ -462,8 +528,12 @@
   function adminVideoCard(video, selectable = false) {
     const youtubeId = youtubeVideoIdFromUrl(video.video_url);
     const thumb = video.thumbnail_url || (youtubeId ? `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg` : "");
+    const globalFallback = `<span class="global-video-media-fallback">${platformLogo(video.platform)}</span>`;
+    const mediaPreview = video.platform === "facebook"
+      ? facebookPreviewMarkup(video, "global-video-media-fallback")
+      : `${globalFallback}${thumb ? `<img src="${esc(thumb)}" alt="" loading="lazy" onerror="this.remove()">` : ""}`;
     return `<article class="global-video-card metric-card-${metricBucket(video)}">
-      <div class="global-video-media">${thumb ? `<img src="${esc(thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : `<span>${platformLogo(video.platform)}</span>`}<span class="global-platform-chip">${platformLogo(video.platform)} ${esc(platformLabel(video.platform))}</span>${selectable ? `<label class="video-select-check"><input type="checkbox" data-metric-select="${video.id}" ${state.metricSelected?.has(video.id)?"checked":""}><span></span></label>` : ""}</div>
+      <div class="global-video-media">${mediaPreview}<span class="global-platform-chip">${platformLogo(video.platform)} ${esc(platformLabel(video.platform))}</span>${selectable ? `<label class="video-select-check"><input type="checkbox" data-metric-select="${video.id}" ${state.metricSelected?.has(video.id)?"checked":""}><span></span></label>` : ""}</div>
       <div class="global-video-body"><div class="global-video-title"><strong>${esc(video.external_title || `Video ${video.position || ""}`)}</strong>${metricBucketBadge(video)}</div><p>${esc(video.clipper_name)} · @${esc(video.username)} · ${esc(video.account_name)}</p>
       <div class="global-video-numbers"><span><b>${num(video.views)}</b><small>vistas</small></span><span><b>${num(video.likes)}</b><small>likes</small></span><span><b>${num(video.comments)}</b><small>coment.</small></span><span><b>${num(video.shares)}</b><small>comp.</small></span></div>
       ${video.metrics_error ? `<div class="metric-error-copy" title="${esc(video.metrics_error)}">${uiIcon("alert",13)} ${esc(video.metrics_error)}</div>` : `<div class="metric-source-copy">${uiIcon("activity",13)} ${esc(metricAvailabilityLabel(video) || "Esperando lectura")}</div>`}
@@ -589,7 +659,13 @@
     const account = accountMap[video.account_id] || {};
     const youtubeId = youtubeVideoIdFromUrl(video.video_url);
     const thumb = video.thumbnail_url || (youtubeId ? `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg` : "");
-    return `<article class="clipper-video-card metric-card-${metricBucket(video)}"><div class="clipper-video-thumb">${thumb?`<img src="${esc(thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer">`:`<span>${platformLogo(video.platform)}</span>`}<b>${video.position}</b></div><div class="clipper-video-info"><div class="global-video-title"><strong>${esc(video.external_title || `Video ${video.position}`)}</strong>${metricBucketBadge(video)}</div><p>${platformLogo(video.platform)} ${esc(account.account_name||platformLabel(video.platform))} · ${dateTimeLabel(video.created_at)}</p><div class="clipper-video-metrics"><span><b>${num(video.views)}</b> vistas</span><span>${num(video.likes)} likes</span><span>${num(video.comments)} coment.</span></div><div class="global-video-actions"><a class="btn btn-ghost btn-sm" href="${esc(video.video_url)}" target="_blank" rel="noopener">Abrir</a><button class="btn btn-secondary btn-sm" data-clipper-sync="${video.id}">${uiIcon("sync",13)} Métricas</button>${editable?`<button class="btn btn-ghost btn-sm" data-edit-video="${video.id}">Editar</button><button class="btn btn-danger btn-sm" data-delete-video="${video.id}">Anular</button>`:""}</div></div></article>`;
+    const clipperFallback = `<span class="clipper-video-thumb-fallback">${platformLogo(video.platform)}</span>`;
+    const clipperPreview = video.platform === "facebook"
+      ? facebookPreviewMarkup(video, "clipper-video-thumb-fallback")
+      : `${clipperFallback}${thumb?`<img src="${esc(thumb)}" alt="" loading="lazy" onerror="this.remove()">`:""}`;
+    const availability = video?.metrics_meta && typeof video.metrics_meta === "object" ? (video.metrics_meta.availability || {}) : {};
+    const viewsLabel = video.platform === "facebook" && availability.views === false && Number(video.views || 0) === 0 ? "—" : num(video.views);
+    return `<article class="clipper-video-card metric-card-${metricBucket(video)}"><div class="clipper-video-thumb">${clipperPreview}<b>${video.position}</b></div><div class="clipper-video-info"><div class="global-video-title"><strong>${esc(video.external_title || `Video ${video.position}`)}</strong>${metricBucketBadge(video)}</div><p>${platformLogo(video.platform)} ${esc(account.account_name||platformLabel(video.platform))} · ${dateTimeLabel(video.created_at)}</p><div class="clipper-video-metrics"><span><b>${viewsLabel}</b> vistas</span><span>${num(video.likes)} likes</span><span>${num(video.comments)} coment.</span></div><div class="global-video-actions"><a class="btn btn-ghost btn-sm" href="${esc(video.video_url)}" target="_blank" rel="noopener">Abrir</a><button class="btn btn-secondary btn-sm" data-clipper-sync="${video.id}">${uiIcon("sync",13)} Métricas</button>${editable?`<button class="btn btn-ghost btn-sm" data-edit-video="${video.id}">Editar</button><button class="btn btn-danger btn-sm" data-delete-video="${video.id}">Anular</button>`:""}</div></div></article>`;
   }
 
   function renderClipperVideosV240() {
@@ -3170,7 +3246,8 @@
       const canManage = admin || editable;
       const syncButton = admin ? `<button class="btn btn-secondary btn-sm" data-sync-video="${video.id}" title="Volver a detectar métricas">↻</button>` : "";
       const actions = `<div class="actions table-actions">${syncButton}${canManage ? `<button class="btn btn-ghost btn-sm" data-edit-video="${video.id}">Editar</button><button class="btn btn-danger btn-sm" data-delete-video="${video.id}">Anular</button>` : ""}</div>`;
-      const thumb = video.thumbnail_url ? `<img class="video-thumb" src="${esc(video.thumbnail_url)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : `<span class="video-thumb" style="display:grid;place-items:center">${PLATFORMS[video.platform]?.icon || "▶"}</span>`;
+      const fallbackThumbLegacy = `<span class="video-thumb" style="display:grid;place-items:center">${platformLogo(video.platform)}</span>`;
+      const thumb = video.thumbnail_url ? `<span class="video-thumb-stack">${fallbackThumbLegacy}<img class="video-thumb" src="${esc(video.thumbnail_url)}" alt="" loading="lazy" onerror="this.remove()"></span>` : fallbackThumbLegacy;
       const viewsValue = Number(video.views || 0) > 0 ? num(video.views) : '<span class="muted">Pendiente</span>';
       return `<tr><td><b>${video.position}</b></td><td>${platformBadge(video.platform,true)}<br><small class="muted">${esc(account.account_name || "—")}</small></td><td><div style="display:flex;align-items:center;gap:8px">${thumb}<div><a href="${esc(video.video_url)}" target="_blank" rel="noopener">Abrir video ↗</a>${video.external_title ? `<small class="muted" style="display:block;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(video.external_title)}</small>` : ""}</div></div></td><td><b>${viewsValue}</b></td><td><b>❤ ${num(video.likes || 0)}</b><br><small class="muted">💬 ${num(video.comments || 0)} · ↗ ${num(video.shares || 0)}</small></td><td>${metricStatus(video)}<br><small class="muted">${dateTimeLabel(video.metrics_checked_at)}</small></td>${admin ? `<td>${dateTimeLabel(video.created_at)}</td>` : ""}<td>${actions}</td></tr>`;
     }).join("")}</tbody></table></div>`;
@@ -3557,9 +3634,20 @@
       "tiktok-verified-compact": "TikTok verificado",
       "tiktok-partial-compact": "TikTok parcial",
       "tiktok-metadata-only": "TikTok basico",
-      "facebook-verified-compact": "Facebook verificado",
-      "facebook-partial-compact": "Facebook parcial",
-      "facebook-limited-compact": "Facebook limitado",
+      "facebook-apify": "Facebook externo (histórico)",
+      "facebook-public-embed": "Facebook público",
+      "facebook-public-html": "Facebook público",
+      "facebook-public-limited": "Facebook público limitado",
+      "facebook-public-v3": "Facebook público V3",
+      "facebook-public-v3-partial": "Facebook parcial",
+      "facebook-public-v3-limited": "Facebook público limitado",
+      "facebook-public-v4": "Facebook público",
+      "facebook-public-v4-limited": "Facebook público limitado",
+      "facebook-public-relay-v6": "Facebook público JSON",
+      "facebook-public-relay-v6-limited": "Facebook público limitado",
+      "facebook-embed-partial-v7": "Facebook público parcial",
+      "facebook-embed-only-v7": "Facebook embed oficial",
+      "facebook-public-limited-v7": "Facebook público limitado",
     };
     return map[value] || (value ? value.replaceAll("-", " ") : "");
   }
@@ -3589,8 +3677,14 @@
       const account=accountMap[video.account_id]||{},canManage=admin||editable;
       const syncButton=admin?`<button class="btn btn-secondary btn-sm btn-icon-only" data-sync-video="${video.id}" title="Sincronizar ahora" aria-label="Sincronizar ahora">${uiIcon("sync",14)}</button>`:"";
       const actions=`<div class="actions table-actions">${syncButton}${canManage?`<button class="btn btn-ghost btn-sm" data-edit-video="${video.id}">Editar</button><button class="btn btn-danger btn-sm" data-delete-video="${video.id}">Anular</button>`:""}</div>`;
-      const thumb=video.thumbnail_url?`<img class="video-thumb" src="${esc(video.thumbnail_url)}" alt="" loading="lazy" referrerpolicy="no-referrer">`:`<span class="video-thumb" style="display:grid;place-items:center">${platformLogo(video.platform)}</span>`;
-      const views=Number(video.views||0)>0?num(video.views):'<span class="muted">Pendiente</span>';
+      const fallbackThumb=`<span class="video-thumb" style="display:grid;place-items:center">${platformLogo(video.platform)}</span>`;
+      const thumb=video.thumbnail_url
+        ? `<span class="video-thumb-stack">${fallbackThumb}<img class="video-thumb" src="${esc(video.thumbnail_url)}" alt="" loading="lazy" onerror="this.remove()"></span>`
+        : fallbackThumb;
+      const availability = video?.metrics_meta && typeof video.metrics_meta === "object" ? (video.metrics_meta.availability || {}) : {};
+      const fbHasOtherMetric = video.platform === "facebook" && availability.views === false
+        && (availability.likes === true || availability.comments === true || availability.shares === true);
+      const views=Number(video.views||0)>0?num(video.views):(fbHasOtherMetric?'<span class="muted" title="Facebook no expuso vistas">—</span>':'<span class="muted">Pendiente</span>');
       const metricHint = metricAvailabilityLabel(video);
       return `<tr><td><b>${video.position}</b></td><td>${platformBadge(video.platform,true)}<br><small>${esc(account.account_name||"—")}</small></td><td><div style="display:flex;align-items:center;gap:8px;min-width:0">${thumb}<div style="min-width:0"><a href="${esc(video.video_url)}" target="_blank" rel="noopener">Abrir video</a>${video.external_title?`<small class="muted" style="display:block;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(video.external_title)}</small>`:""}</div></div></td><td><div class="report-metric-main">${uiIcon("eye",13)}<b>${views}</b></div></td><td><div class="report-like-line">${uiIcon("heart",11)} ${num(video.likes||0)} likes</div><small>${num(video.comments||0)} comentarios · ${num(video.shares||0)} compartidos</small></td><td>${metricStatus(video)}<br><small>${dateTimeLabel(video.metrics_checked_at)}</small>${metricHint ? `<br><small class="muted">${esc(metricHint)}</small>` : ""}</td>${admin?`<td>${dateTimeLabel(video.created_at)}</td>`:""}<td>${actions}</td></tr>`;
     }).join("");
@@ -4647,11 +4741,10 @@ ${sheet("Videos", [videoSheetHeaders, ...videoSheetRows])}
   async function renderAdminReports() { return renderAdminReportsV240(); }
   function renderClipperVideos() { return renderClipperVideosV240(); }
 
-  // Diagnóstico manual de recuperación. Úsalo desde la consola del navegador
-  // estando autenticado: await clipcontrolDebugFacebook("https://facebook.com/...")
-  window.clipcontrolDebugFacebook = (url) => invokeProcessor({ action:"facebook_diagnostic", url });
+  // Diagnóstico mínimo de infraestructura. Facebook ya no tiene una ruta especial.
   window.clipcontrolDebugYoutube = () => invokeProcessor({ action:"youtube_public_feed", limit:15 });
   window.clipcontrolDebugHealth = () => invokeProcessor({ action:"health" });
+  window.clipcontrolDebugFacebook = (url) => invokeProcessor({ action:"facebook_probe", url });
 
   window.addEventListener("DOMContentLoaded", init);
 })();

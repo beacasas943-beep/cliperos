@@ -1,0 +1,14 @@
+CLIPCONTROL 2.6.1 — FACEBOOK EMBED FIRST
+
+Qué cambia:
+1. Facebook usa el oEmbed oficial tokenless de Meta para comprobar y obtener metadata.
+2. El frontend muestra una vista previa real mediante el plugin público de Facebook, incluso si thumbnail_url está vacío o caducó.
+3. El lector de métricas hace solo dos caminos: oEmbed oficial + un plugin público. Sin colas y sin m.facebook.
+4. Si el embed carga pero Meta no expone contadores, el video queda como lectura parcial, no como fallo de hosting/Supabase.
+
+Instalación:
+- Netlify: reemplaza TODOS los archivos del frontend de este paquete (index.html, app.js, styles.css, etc.).
+- Supabase Edge Functions: despliega supabase/functions/bright-processor/index.ts como bright-processor.
+- No hace falta un SQL nuevo para la vista previa.
+- Recarga con Ctrl+Shift+R.
+- Health esperado: 2.6.1-facebook-embed-first-v7
