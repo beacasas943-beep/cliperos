@@ -1101,80 +1101,60 @@ body.theme-dark .btn-elaboration{background:#31250d!important;color:#ffd06c!impo
 
 
 /* =====================================================================
-   CLIPCONTROL 2.4.5 · ADMIN UI CLEANUP + RESET BESIDE UPDATE
-   Solo se activa cuando el backend confirma role admin/superadmin.
+   CLIPCONTROL 2.5.1 · ADMIN CLEAN + RESET GLOBAL DE MÉTRICAS
    ===================================================================== */
-
-/* Lo marcado como innecesario en Inicio: se elimina SOLO en administración. */
-body.cc-admin-ui-v245 .executive-kpi-grid,
-body.cc-admin-ui-v245 .period-intelligence{
-  display:none!important;
+body.cc-admin-ui-v251 .executive-kpi-grid,
+body.cc-admin-ui-v251 .period-intelligence{
+  display:none !important;
 }
 
-/* El tablero queda compacto al retirar los bloques redundantes. */
-body.cc-admin-ui-v245 .admin-command-actions{
-  margin-bottom:12px!important;
-}
-body.cc-admin-ui-v245 .live-platform-grid{
-  margin-top:12px!important;
-}
-body.cc-admin-ui-v245 .live-platform-card{
-  min-height:142px;
-}
-
-/* Botones de métricas dentro del detalle del reporte. */
-.cc-metric-actions-v245{
-  display:inline-flex!important;
-  align-items:center!important;
-  justify-content:flex-end!important;
-  gap:7px!important;
+body.cc-admin-ui-v251 .cc-admin-metric-actions{
+  display:inline-flex !important;
+  align-items:center !important;
+  justify-content:flex-end !important;
+  gap:8px !important;
   flex-wrap:wrap;
   margin-left:auto;
 }
-.cc-metric-actions-v245 > .btn{
-  margin:0!important;
-  min-height:32px!important;
+body.cc-admin-ui-v251 .cc-admin-metric-actions > .btn{
+  margin:0 !important;
+  min-height:32px !important;
 }
-.cc-metric-actions-v245 .metric-reset-all-btn{
-  display:inline-flex!important;
-  visibility:visible!important;
-  opacity:1!important;
-  background:color-mix(in srgb,#ef4444 10%,var(--cc22-surface))!important;
-  color:#ef6571!important;
-  border:1px solid color-mix(in srgb,#ef4444 38%,var(--cc22-border))!important;
-  box-shadow:none!important;
+body.cc-admin-ui-v251 .cc-admin-reset-btn{
+  display:inline-flex !important;
+  align-items:center !important;
+  gap:7px !important;
+  background:color-mix(in srgb,#ef4444 10%,var(--cc22-surface)) !important;
+  color:#f06a77 !important;
+  border:1px solid color-mix(in srgb,#ef4444 42%,var(--cc22-border)) !important;
+  box-shadow:none !important;
 }
-.cc-metric-actions-v245 .metric-reset-all-btn:hover{
-  background:color-mix(in srgb,#ef4444 16%,var(--cc22-surface))!important;
-  border-color:color-mix(in srgb,#ef4444 55%,var(--cc22-border))!important;
+body.cc-admin-ui-v251 .cc-admin-reset-btn:hover{
+  background:color-mix(in srgb,#ef4444 16%,var(--cc22-surface)) !important;
+  border-color:color-mix(in srgb,#ef4444 60%,var(--cc22-border)) !important;
   transform:translateY(-1px);
 }
-.cc-metric-actions-v245 .metric-reset-all-btn:disabled{
-  opacity:.68!important;
+body.cc-admin-ui-v251 .cc-admin-reset-btn:disabled{
+  opacity:.68 !important;
   cursor:wait;
   transform:none;
 }
 
-/* No debe existir botón global en la barra superior ni en el pie del modal. */
-body.cc-admin-ui-v245 .metric-reset-top-btn,
-#modalLayer .modal-foot > .metric-reset-all-btn{
-  display:none!important;
-}
-
-@media(max-width:760px){
-  .cc-metric-actions-v245{
+@media (max-width: 760px){
+  body.cc-admin-ui-v251 .cc-admin-metric-actions{
     width:100%;
-    display:grid!important;
+    display:grid !important;
     grid-template-columns:1fr 1fr;
     margin-left:0;
   }
-  .cc-metric-actions-v245 > .btn{
-    width:100%!important;
+  body.cc-admin-ui-v251 .cc-admin-metric-actions > .btn{
+    width:100% !important;
   }
 }
-@media(max-width:520px){
-  .cc-metric-actions-v245{
+@media (max-width: 520px){
+  body.cc-admin-ui-v251 .cc-admin-metric-actions{
     grid-template-columns:1fr;
   }
 }
+
 
