@@ -1112,3 +1112,24 @@ body.theme-dark .btn-elaboration{background:#31250d!important;color:#ffd06c!impo
 @media(max-width:620px){
   .metric-reset-all-btn{width:100%;margin-right:0;order:-1}
 }
+
+
+/* =====================================================================
+   CLIPCONTROL 2.4.4 · METRIC RESET BUTTON VISIBILITY HOTFIX
+   ===================================================================== */
+.metric-reset-top-btn{
+  flex:0 0 auto;
+  background:#7f1d1d!important;
+  color:#fff!important;
+  border-color:#b91c1c!important;
+}
+.metric-reset-top-btn span{display:inline!important}
+#modalLayer .metric-reset-all-btn{
+  display:inline-flex!important;
+  visibility:visible!important;
+  opacity:1!important;
+}
+@media(max-width:760px){
+  .metric-reset-top-btn span:last-child{display:none!important}
+  .metric-reset-top-btn{min-width:38px;padding-inline:10px!important}
+}
