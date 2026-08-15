@@ -1099,37 +1099,82 @@ body.theme-dark .btn-elaboration{background:#31250d!important;color:#ffd06c!impo
 @media(max-width:620px){.creator-overview-v234{align-items:flex-start;flex-direction:column;padding:12px}.creator-overview-pay{text-align:left;width:100%;padding-top:9px;border-top:1px solid var(--cc22-border)}.creator-overview-pay strong{font-size:21px}.registered-platform-grid-v234{grid-template-columns:1fr!important}.clipper-action-strip-v234{display:grid!important}.auto-submit-card-v234{width:100%}.report-network-progress-v234{grid-template-columns:repeat(2,minmax(0,1fr))!important}.report-network-progress-v234 .report-network-pill small{max-width:70px}.report-actions-v234{display:grid;grid-template-columns:1fr 1fr;width:100%}.report-actions-v234 .btn{width:100%}.payment-network-list-v234>div{grid-template-columns:18px minmax(0,1fr) auto}.payment-network-list-v234>div>b{display:none}.page-heading h1{font-size:16px!important}.page-heading p{display:block!important;max-width:200px;font-size:7px!important}}
 .creator-photo-button{position:relative;border:0;background:transparent;padding:0;display:grid;place-items:center;cursor:pointer;border-radius:50%}.creator-photo-button>i{position:absolute;right:-2px;bottom:-1px;width:16px;height:16px;border-radius:50%;display:grid;place-items:center;background:#6c5cf4;color:#fff;border:2px solid var(--cc22-surface);font-style:normal;font-size:10px;font-weight:900}.creator-photo-button:hover .profile-avatar{transform:scale(1.04)}
 
-/* =====================================================================
-   CLIPCONTROL 2.4.3 · GLOBAL METRIC RESET BUTTON
-   ===================================================================== */
-.metric-reset-all-btn{
-  margin-right:auto;
-  border:1px solid rgba(220,38,38,.32);
-  box-shadow:0 8px 22px rgba(185,28,28,.14);
-}
-.metric-reset-all-btn:hover{filter:saturate(1.08)}
-.metric-reset-all-btn:disabled{cursor:wait;opacity:.72}
-@media(max-width:620px){
-  .metric-reset-all-btn{width:100%;margin-right:0;order:-1}
-}
-
 
 /* =====================================================================
-   CLIPCONTROL 2.4.4 · METRIC RESET BUTTON VISIBILITY HOTFIX
+   CLIPCONTROL 2.4.5 · ADMIN UI CLEANUP + RESET BESIDE UPDATE
+   Solo se activa cuando el backend confirma role admin/superadmin.
    ===================================================================== */
-.metric-reset-top-btn{
-  flex:0 0 auto;
-  background:#7f1d1d!important;
-  color:#fff!important;
-  border-color:#b91c1c!important;
+
+/* Lo marcado como innecesario en Inicio: se elimina SOLO en administración. */
+body.cc-admin-ui-v245 .executive-kpi-grid,
+body.cc-admin-ui-v245 .period-intelligence{
+  display:none!important;
 }
-.metric-reset-top-btn span{display:inline!important}
-#modalLayer .metric-reset-all-btn{
+
+/* El tablero queda compacto al retirar los bloques redundantes. */
+body.cc-admin-ui-v245 .admin-command-actions{
+  margin-bottom:12px!important;
+}
+body.cc-admin-ui-v245 .live-platform-grid{
+  margin-top:12px!important;
+}
+body.cc-admin-ui-v245 .live-platform-card{
+  min-height:142px;
+}
+
+/* Botones de métricas dentro del detalle del reporte. */
+.cc-metric-actions-v245{
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:flex-end!important;
+  gap:7px!important;
+  flex-wrap:wrap;
+  margin-left:auto;
+}
+.cc-metric-actions-v245 > .btn{
+  margin:0!important;
+  min-height:32px!important;
+}
+.cc-metric-actions-v245 .metric-reset-all-btn{
   display:inline-flex!important;
   visibility:visible!important;
   opacity:1!important;
+  background:color-mix(in srgb,#ef4444 10%,var(--cc22-surface))!important;
+  color:#ef6571!important;
+  border:1px solid color-mix(in srgb,#ef4444 38%,var(--cc22-border))!important;
+  box-shadow:none!important;
 }
+.cc-metric-actions-v245 .metric-reset-all-btn:hover{
+  background:color-mix(in srgb,#ef4444 16%,var(--cc22-surface))!important;
+  border-color:color-mix(in srgb,#ef4444 55%,var(--cc22-border))!important;
+  transform:translateY(-1px);
+}
+.cc-metric-actions-v245 .metric-reset-all-btn:disabled{
+  opacity:.68!important;
+  cursor:wait;
+  transform:none;
+}
+
+/* No debe existir botón global en la barra superior ni en el pie del modal. */
+body.cc-admin-ui-v245 .metric-reset-top-btn,
+#modalLayer .modal-foot > .metric-reset-all-btn{
+  display:none!important;
+}
+
 @media(max-width:760px){
-  .metric-reset-top-btn span:last-child{display:none!important}
-  .metric-reset-top-btn{min-width:38px;padding-inline:10px!important}
+  .cc-metric-actions-v245{
+    width:100%;
+    display:grid!important;
+    grid-template-columns:1fr 1fr;
+    margin-left:0;
+  }
+  .cc-metric-actions-v245 > .btn{
+    width:100%!important;
+  }
 }
+@media(max-width:520px){
+  .cc-metric-actions-v245{
+    grid-template-columns:1fr;
+  }
+}
+
