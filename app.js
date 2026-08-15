@@ -1,4 +1,6 @@
 (() => {
+  const CLIPCONTROL_FRONTEND_VERSION = "2.6.3-link-validation";
+  window.CLIPCONTROL_FRONTEND_VERSION = CLIPCONTROL_FRONTEND_VERSION;
   "use strict";
 
   const PLATFORMS = {
@@ -163,51 +165,24 @@
   }
 
   function videoUrlValidation(value, expectedPlatform = null) {
+    // 2.6.3: el frontend valida solo protocolo + dominio + plataforma elegida.
+    // No intentamos adivinar aquí todas las rutas válidas de cada red social:
+    // Facebook/TikTok/YouTube cambian y generan enlaces cortos/de share con frecuencia.
+    // La Edge Function es la responsable de resolver/redirigir y detectar el contenido.
     const videoUrl = normalizeUrl(value);
     if (!isValidHttpUrl(videoUrl)) return { ok: false, url: videoUrl, reason: "El enlace no es válido." };
     try {
-      const url = new URL(videoUrl);
-      const host = normalizedHostname(url.hostname);
-      const path = url.pathname.replace(/\/+$/, "");
       const platform = inferPlatformFromUrl(videoUrl);
-      if (!platform) return { ok: false, url: videoUrl, reason: "Solo se permiten enlaces de TikTok, Instagram, YouTube o Facebook." };
+      if (!platform) {
+        return { ok: false, url: videoUrl, reason: "Solo se permiten enlaces de TikTok, Instagram, YouTube o Facebook." };
+      }
       if (expectedPlatform && platform !== expectedPlatform) {
-        return { ok: false, url: videoUrl, reason: `El enlace parece ser de ${platformLabel(platform)}, pero la cuenta elegida es de ${platformLabel(expectedPlatform)}.` };
+        return {
+          ok: false,
+          url: videoUrl,
+          reason: `El enlace parece ser de ${platformLabel(platform)}, pero la cuenta elegida es de ${platformLabel(expectedPlatform)}.`,
+        };
       }
-
-      if (platform === "youtube") {
-        const firstSegment = path.split("/").filter(Boolean)[0] || "";
-        const secondSegment = path.split("/").filter(Boolean)[1] || "";
-        const hasWatchId = Boolean(url.searchParams.get("v"));
-        const valid = (host === "youtu.be" && Boolean(firstSegment))
-          || (host.includes("youtube.com") && path === "/watch" && hasWatchId)
-          || (host.includes("youtube.com") && ["shorts", "live", "clip", "embed"].includes(firstSegment) && Boolean(secondSegment))
-          || (host.includes("youtube.com") && path.startsWith("/@") && Boolean(url.searchParams.get("v")));
-        if (!valid) return { ok: false, url: videoUrl, reason: "Usa un enlace directo del video, short o live de YouTube." };
-      }
-
-      if (platform === "tiktok") {
-        const valid = /(^|\.)tiktok\.com$/i.test(host)
-          && (/\/video\/\d+/i.test(path) || /^(\/@[^/]+)?\/?(video\/\d+)?$/i.test(path) || /^\/(t|embed)\//i.test(path));
-        if (!valid) return { ok: false, url: videoUrl, reason: "Usa un enlace directo del video de TikTok." };
-      }
-
-      if (platform === "instagram") {
-        const valid = /^\/(reel|p|tv)\//i.test(path);
-        if (!valid) return { ok: false, url: videoUrl, reason: "Usa un enlace directo del reel o publicación de Instagram." };
-      }
-
-      if (platform === "facebook") {
-        const valid = host === "fb.watch"
-          || /\/(?:videos|reel|reels)\//i.test(path)
-          || path === "/watch" || /^\/watch\//i.test(path)
-          || /\/share\/(?:v|r|p)\//i.test(path)
-          || /\/(?:posts|permalink)\//i.test(path)
-          || /\/story\.php$/i.test(path)
-          || /\/photo(?:\.php)?$/i.test(path);
-        if (!valid) return { ok: false, url: videoUrl, reason: "Usa un enlace directo del video, reel, live o publicación de Facebook." };
-      }
-
       return { ok: true, url: videoUrl, platform };
     } catch {
       return { ok: false, url: videoUrl, reason: "No se pudo leer el enlace." };
@@ -1420,12 +1395,51 @@
     button.disabled = true;
     button.textContent = "Guardando…";
     try {
-      await query(state.supabase.rpc("save_video_batch", { p_report_id: state.currentReportId, p_rows: rows }));
+      // Antes de insertar, intentamos recuperar una fila anulada con el mismo
+      // video. Esto evita que un soft-delete deje bloqueado el enlace o el
+      // número de posición. Si el RPC todavía no está instalado, simplemente
+      // continuamos con el comportamiento anterior.
+      const rowsToInsert = [];
+      const restoredIds = [];
+      let restoreRpcAvailable = true;
+      for (const row of rows) {
+        if (!restoreRpcAvailable) {
+          rowsToInsert.push(row);
+          continue;
+        }
+        try {
+          const restored = await query(state.supabase.rpc("restore_deleted_video", {
+            p_report_id: state.currentReportId,
+            p_position: row.position,
+            p_account_id: row.account_id,
+            p_video_url: row.video_url,
+          }));
+          const restoredRow = Array.isArray(restored) ? restored[0] : restored;
+          const restoredId = restoredRow?.video_id || restoredRow?.id || (typeof restoredRow === "string" ? restoredRow : null);
+          if (restoredId) restoredIds.push(restoredId);
+          else rowsToInsert.push(row);
+        } catch (restoreError) {
+          const restoreMessage = String(restoreError?.message || restoreError || "");
+          if (/restore_deleted_video|function .* does not exist|PGRST202/i.test(restoreMessage)) {
+            restoreRpcAvailable = false;
+            rowsToInsert.push(row);
+          } else {
+            throw restoreError;
+          }
+        }
+      }
+
+      if (rowsToInsert.length) {
+        await query(state.supabase.rpc("save_video_batch", { p_report_id: state.currentReportId, p_rows: rowsToInsert }));
+      }
       const positions = rows.map((r) => r.position);
       const savedVideos = await query(state.supabase.from("videos").select("id,position").eq("report_id", state.currentReportId).in("position", positions).is("deleted_at", null));
       localStorage.removeItem(draftKey);
       closeModal();
-      toast(`${rows.length} video${rows.length === 1 ? "" : "s"} guardado${rows.length === 1 ? "" : "s"}. Detectando métricas…`, "success");
+      const restoredCount = restoredIds.length;
+      toast(restoredCount
+        ? `${rows.length} video${rows.length === 1 ? "" : "s"} listo${rows.length === 1 ? "" : "s"} · ${restoredCount} recuperado${restoredCount === 1 ? "" : "s"}. Detectando métricas…`
+        : `${rows.length} video${rows.length === 1 ? "" : "s"} guardado${rows.length === 1 ? "" : "s"}. Detectando métricas…`, "success");
       const savedList = savedVideos || [];
       for (let index = 0; index < savedList.length; index += 4) {
         await Promise.all(savedList.slice(index, index + 4).map((video) => syncVideoMetrics(video.id, true)));
@@ -4747,4 +4761,16 @@ ${sheet("Videos", [videoSheetHeaders, ...videoSheetRows])}
   window.clipcontrolDebugFacebook = (url) => invokeProcessor({ action:"facebook_probe", url });
 
   window.addEventListener("DOMContentLoaded", init);
+
+  window.clipcontrolDebugFrontend = () => ({
+    version: CLIPCONTROL_FRONTEND_VERSION,
+    samples: {
+      facebook_reel: videoUrlValidation("https://www.facebook.com/reel/1579243183893033"),
+      facebook_share: videoUrlValidation("https://www.facebook.com/share/p/1Gt2mqMZu9/"),
+      tiktok_short: videoUrlValidation("https://vt.tiktok.com/ZSVNuNh39/"),
+      youtube_short: videoUrlValidation("https://youtube.com/shorts/wSrn2PM4o6o?si=JRei8DWRyfFQpCSo"),
+      instagram_reel: videoUrlValidation("https://www.instagram.com/reel/ABC123/")
+    }
+  });
+
 })();
