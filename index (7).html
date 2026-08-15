@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0b1020">
+  <meta name="description" content="ClipControl: control de clips, métricas, reportes y pagos por plataforma.">
+  <title>ClipControl · Creator Control</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="preload" href="https://giffiles.alphacoders.com/221/22147.gif" as="image">
+  <link rel="stylesheet" href="./styles.css?v=2.4.0">
+</head>
+<body class="is-login">
+  <section id="loginView" class="login-view login-v22">
+    <div class="login-bg" aria-hidden="true"><i></i><i></i><i></i></div>
+    <main class="login-shell">
+      <div class="login-logo" aria-label="ClipControl">
+        <span class="cc-logo cc-logo-gif" aria-hidden="true"><img src="https://giffiles.alphacoders.com/221/22147.gif" data-fallback="./assets/clipcontrol-brand.gif" onerror="if(this.dataset.fallback&&this.src!==this.dataset.fallback)this.src=this.dataset.fallback" alt=""></span>
+        <div><strong>ClipControl</strong><span>LIVE CONTROL</span></div>
+      </div>
+
+      <section class="login-card login-card-v22">
+        <div class="login-title">
+          <span class="login-kicker"><i></i> Acceso seguro</span>
+          <h1>Iniciar sesión</h1>
+          <p>Ingresa a tu panel.</p>
+        </div>
+        <form id="loginForm" class="login-form-v22" autocomplete="on">
+          <label class="field-v22">
+            <span>Usuario o correo</span>
+            <div class="field-control">
+              <span class="field-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
+              <input id="loginUser" autocomplete="username" required placeholder="usuario">
+            </div>
+          </label>
+          <label class="field-v22">
+            <span>Contraseña</span>
+            <div class="field-control password-control-v22">
+              <span class="field-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 10V7a5 5 0 0 1 10 0v3M6 10h12a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
+              <input id="loginPass" type="password" autocomplete="current-password" required placeholder="••••••••">
+              <button id="showPass" type="button" class="password-toggle" aria-label="Mostrar contraseña">
+                <svg viewBox="0 0 24 24"><path d="M2.7 12s3.4-6 9.3-6 9.3 6 9.3 6-3.4 6-9.3 6-9.3-6-9.3-6Z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="2.7" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+              </button>
+            </div>
+          </label>
+          <button id="loginBtn" class="btn btn-primary btn-login-v22" type="submit"><span>Ingresar</span><span class="button-arrow" aria-hidden="true">→</span></button>
+        </form>
+        <div class="login-status"><span id="connectionDot" class="connection-dot"></span><span id="connectionText">Conectando…</span></div>
+      </section>
+      <small class="login-version">ClipControl 2.4.0 · Operations Center</small>
+    </main>
+  </section>
+
+  <section id="appView" class="app-shell hidden" hidden aria-hidden="true">
+    <aside id="sidebar" class="sidebar">
+      <div class="side-brand">
+        <span class="cc-logo small cc-logo-gif" aria-hidden="true"><img src="https://giffiles.alphacoders.com/221/22147.gif" data-fallback="./assets/clipcontrol-brand.gif" onerror="if(this.dataset.fallback&&this.src!==this.dataset.fallback)this.src=this.dataset.fallback" alt=""></span>
+        <div><strong>ClipControl</strong><span id="sideRole">Portal</span></div>
+      </div>
+      <nav id="nav" class="nav"></nav>
+      <div class="side-bottom">
+        <div class="user-mini">
+          <div id="miniAvatar" class="avatar"></div>
+          <div><strong id="miniName">Usuario</strong><span id="miniRole">Clipero</span></div>
+        </div>
+        <button id="logoutBtn" class="btn side-logout" type="button"><span>Salir</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5M15 12H3M14 4h5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button id="menuBtn" class="menu-btn" aria-label="Abrir menú"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg></button>
+          <div class="page-heading"><h1 id="pageTitle">Inicio</h1><p id="pageSubtitle"></p></div>
+        </div>
+        <div class="top-actions">
+          <span id="liveStatus" class="live-status"><i></i><span>Conectando</span></span>
+          <span id="weekBadge" class="week-badge"></span>
+          <button id="noticeBtn" class="icon-action notice-action" type="button" title="Avisos" aria-label="Avisos"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span id="noticeBadge" class="notice-badge hidden">0</span></button>
+          <button id="themeBtn" class="icon-action" type="button" title="Cambiar tema" aria-label="Cambiar tema"><svg viewBox="0 0 24 24"><path d="M20.5 14.4A8.3 8.3 0 0 1 9.6 3.5 8.5 8.5 0 1 0 20.5 14.4Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></button>
+        </div>
+      </header>
+      <div id="content" class="content"></div>
+    </main>
+
+    <nav id="mobileNav" class="mobile-nav" aria-label="Navegación móvil"></nav>
+  </section>
+
+  <div id="modalLayer" class="modal-layer"></div>
+  <div id="toast" class="toast"></div>
+  <div id="loading" class="loading-overlay hidden" aria-live="polite">
+    <div class="loading-v22"><span class="cc-spinner"></span><div><b>ClipControl</b><small>Preparando tu panel…</small></div></div>
+  </div>
+
+  <script src="https://unpkg.com/@supabase/supabase-js@2.95.0"></script>
+  <script src="./supabase-config.js?v=2.4.0"></script>
+  <script src="./app.js?v=2.4.0"></script>
+</body>
+</html>

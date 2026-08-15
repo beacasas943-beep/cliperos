@@ -117,6 +117,110 @@
     return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
   }
 
+  function normalizedHostname(hostname = "") {
+    return String(hostname || "").trim().toLowerCase().replace(/^www\./, "");
+  }
+
+  function inferPlatformFromUrl(value) {
+    try {
+      const url = new URL(normalizeUrl(value));
+      const host = normalizedHostname(url.hostname);
+      if (host.includes("youtu.be") || host.includes("youtube.com")) return "youtube";
+      if (host.includes("tiktok.com")) return "tiktok";
+      if (host.includes("instagram.com")) return "instagram";
+      if (host.includes("facebook.com") || host.includes("fb.watch")) return "facebook";
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  function videoUrlValidation(value, expectedPlatform = null) {
+    const videoUrl = normalizeUrl(value);
+    if (!isValidHttpUrl(videoUrl)) return { ok: false, url: videoUrl, reason: "El enlace no es válido." };
+    try {
+      const url = new URL(videoUrl);
+      const host = normalizedHostname(url.hostname);
+      const path = url.pathname.replace(/\/+$/, "");
+      const platform = inferPlatformFromUrl(videoUrl);
+      if (!platform) return { ok: false, url: videoUrl, reason: "Solo se permiten enlaces de TikTok, Instagram, YouTube o Facebook." };
+      if (expectedPlatform && platform !== expectedPlatform) {
+        return { ok: false, url: videoUrl, reason: `El enlace parece ser de ${platformLabel(platform)}, pero la cuenta elegida es de ${platformLabel(expectedPlatform)}.` };
+      }
+
+      if (platform === "youtube") {
+        const firstSegment = path.split("/").filter(Boolean)[0] || "";
+        const secondSegment = path.split("/").filter(Boolean)[1] || "";
+        const hasWatchId = Boolean(url.searchParams.get("v"));
+        const valid = (host === "youtu.be" && Boolean(firstSegment))
+          || (host.includes("youtube.com") && path === "/watch" && hasWatchId)
+          || (host.includes("youtube.com") && ["shorts", "live", "clip", "embed"].includes(firstSegment) && Boolean(secondSegment))
+          || (host.includes("youtube.com") && path.startsWith("/@") && Boolean(url.searchParams.get("v")));
+        if (!valid) return { ok: false, url: videoUrl, reason: "Usa un enlace directo del video, short o live de YouTube." };
+      }
+
+      if (platform === "tiktok") {
+        const valid = /(^|\.)tiktok\.com$/i.test(host)
+          && (/\/video\/\d+/i.test(path) || /^(\/@[^/]+)?\/?(video\/\d+)?$/i.test(path) || /^\/(t|embed)\//i.test(path));
+        if (!valid) return { ok: false, url: videoUrl, reason: "Usa un enlace directo del video de TikTok." };
+      }
+
+      if (platform === "instagram") {
+        const valid = /^\/(reel|p|tv)\//i.test(path);
+        if (!valid) return { ok: false, url: videoUrl, reason: "Usa un enlace directo del reel o publicación de Instagram." };
+      }
+
+      if (platform === "facebook") {
+        const valid = host === "fb.watch" || /\/videos\//i.test(path) || path === "/watch" || /^\/watch\//i.test(path) || /\/share\/v\//i.test(path);
+        if (!valid) return { ok: false, url: videoUrl, reason: "Usa un enlace directo del video o live de Facebook." };
+      }
+
+      return { ok: true, url: videoUrl, platform };
+    } catch {
+      return { ok: false, url: videoUrl, reason: "No se pudo leer el enlace." };
+    }
+  }
+
+  function canonicalVideoUrl(value) {
+    try {
+      const url = new URL(normalizeUrl(value));
+      const host = normalizedHostname(url.hostname);
+      const path = url.pathname.replace(/\/+$/, "");
+      const platform = inferPlatformFromUrl(value);
+      if (platform === "youtube") {
+        if (host === "youtu.be") return `youtube:${path.split("/").filter(Boolean)[0] || path}`;
+        if (path === "/watch") return `youtube:${url.searchParams.get("v") || url.href}`;
+        const segments = path.split("/").filter(Boolean);
+        if (["shorts", "live", "clip", "embed"].includes(segments[0])) return `youtube:${segments[1] || url.href}`;
+      }
+      if (platform === "instagram") return `instagram:${path.toLowerCase()}`;
+      if (platform === "facebook") {
+        const id = url.searchParams.get("v") || path.toLowerCase();
+        return `facebook:${id}`;
+      }
+      if (platform === "tiktok") {
+        const match = path.match(/\/video\/(\d+)/i);
+        return `tiktok:${match?.[1] || path.toLowerCase()}`;
+      }
+      url.hash = "";
+      return `${host}${path}${url.search}`;
+    } catch {
+      return String(value || "").trim().toLowerCase();
+    }
+  }
+
+  function preferredAccountIdForPlatform(accounts, platform) {
+    const available = (accounts || []).filter((account) => account.platform === platform && account.active);
+    return available.length === 1 ? available[0].id : "";
+  }
+
+  function parseBulkVideoUrls(rawText) {
+    return String(rawText || "")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+  }
+
   function isValidHttpUrl(value) {
     try {
       const url = new URL(value);
@@ -267,6 +371,342 @@
     if (/row-level security|permission denied/i.test(msg)) return "Supabase bloqueó la operación por permisos. Ejecuta el SQL de actualización y vuelve a iniciar sesión.";
     if (/El reporte está cerrado|plazo de envío terminó/i.test(msg)) return "El reporte ya está cerrado. Administración debe habilitar la edición fuera de plazo.";
     return msg;
+  }
+
+  // ClipControl 2.4 Operations Center.
+  function metricBucket(video = {}) {
+    const status = String(video.metrics_status || "").toLowerCase();
+    if (status === "syncing") return "syncing";
+    if (status === "error") return "error";
+    if (video.metrics_error) return "partial";
+    if (!video.metrics_checked_at) return "pending";
+    return "ok";
+  }
+
+  function metricBucketLabel(bucket) {
+    return ({ ok:"Verificada", partial:"Parcial", error:"Con error", syncing:"Sincronizando", pending:"Pendiente" })[bucket] || "Pendiente";
+  }
+
+  function metricBucketBadge(video) {
+    const bucket = metricBucket(video);
+    return `<span class="metric-quality metric-quality-${bucket}"><i></i>${metricBucketLabel(bucket)}</span>`;
+  }
+
+  function youtubeVideoIdFromUrl(value) {
+    try {
+      const url = new URL(value);
+      if (url.hostname.replace(/^www\./, "") === "youtu.be") return url.pathname.split("/").filter(Boolean)[0] || null;
+      return url.searchParams.get("v") || url.pathname.match(/\/(?:shorts|live|embed)\/([\w-]{11})/i)?.[1] || null;
+    } catch { return null; }
+  }
+
+  async function fetchAllAdminVideos(reportIds) {
+    if (!reportIds.length) return [];
+    const rows = [], pageSize = 700;
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await state.supabase.from("videos").select("*")
+        .in("report_id", reportIds).is("deleted_at", null).order("created_at", { ascending:false })
+        .range(from, from + pageSize - 1);
+      if (error) throw error;
+      rows.push(...(data || []));
+      if (!data || data.length < pageSize) break;
+    }
+    return rows;
+  }
+
+  async function loadAdminVideoCenterData(reports = null, force = false) {
+    const cacheKey = String(state.adminWeek || state.activePeriod?.start_date || currentWeekStartISO());
+    if (!force && state.adminVideoData?.key === cacheKey) return state.adminVideoData;
+    const reportRows = reports || await query(state.supabase.from("weekly_report_summary").select("*").eq("week_start", cacheKey).order("total_views", { ascending:false }));
+    const reportIds = reportRows.map(report => report.report_id);
+    const userIds = [...new Set(reportRows.map(report => report.user_id).filter(Boolean))];
+    const [videos, accounts] = await Promise.all([
+      fetchAllAdminVideos(reportIds),
+      userIds.length ? query(state.supabase.from("social_accounts").select("*").in("user_id", userIds).order("platform")) : Promise.resolve([]),
+    ]);
+    const reportMap = Object.fromEntries(reportRows.map(report => [report.report_id, report]));
+    const accountMap = Object.fromEntries(accounts.map(account => [account.id, account]));
+    const rows = videos.map(video => {
+      const report = reportMap[video.report_id] || {}, account = accountMap[video.account_id] || {};
+      return {
+        ...video,
+        user_id: video.user_id || report.user_id,
+        username: report.username || "",
+        clipper_name: `${report.names || ""} ${report.surnames || ""}`.trim() || report.username || "Clipero",
+        report_status: report.status || "draft",
+        account_name: account.account_name || "Sin cuenta",
+        account_url: account.account_url || account.profile_url || "",
+      };
+    });
+    state.adminVideoData = { key:cacheKey, reports:reportRows, videos:rows, accounts, reportMap, accountMap };
+    return state.adminVideoData;
+  }
+
+  function adminVideoFilterRows(rows, filters = {}) {
+    const search = String(filters.search || "").trim().toLowerCase();
+    return rows.filter(video => {
+      if (filters.clipper && filters.clipper !== "all" && video.user_id !== filters.clipper) return false;
+      if (filters.account && filters.account !== "all" && video.account_id !== filters.account) return false;
+      if (filters.platform && filters.platform !== "all" && video.platform !== filters.platform) return false;
+      if (filters.status && filters.status !== "all" && metricBucket(video) !== filters.status) return false;
+      return !search || `${video.clipper_name} ${video.username} ${video.account_name} ${video.external_title || ""} ${video.video_url || ""}`.toLowerCase().includes(search);
+    });
+  }
+
+  function adminVideoCard(video, selectable = false) {
+    const youtubeId = youtubeVideoIdFromUrl(video.video_url);
+    const thumb = video.thumbnail_url || (youtubeId ? `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg` : "");
+    return `<article class="global-video-card metric-card-${metricBucket(video)}">
+      <div class="global-video-media">${thumb ? `<img src="${esc(thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : `<span>${platformLogo(video.platform)}</span>`}<span class="global-platform-chip">${platformLogo(video.platform)} ${esc(platformLabel(video.platform))}</span>${selectable ? `<label class="video-select-check"><input type="checkbox" data-metric-select="${video.id}" ${state.metricSelected?.has(video.id)?"checked":""}><span></span></label>` : ""}</div>
+      <div class="global-video-body"><div class="global-video-title"><strong>${esc(video.external_title || `Video ${video.position || ""}`)}</strong>${metricBucketBadge(video)}</div><p>${esc(video.clipper_name)} · @${esc(video.username)} · ${esc(video.account_name)}</p>
+      <div class="global-video-numbers"><span><b>${num(video.views)}</b><small>vistas</small></span><span><b>${num(video.likes)}</b><small>likes</small></span><span><b>${num(video.comments)}</b><small>coment.</small></span><span><b>${num(video.shares)}</b><small>comp.</small></span></div>
+      ${video.metrics_error ? `<div class="metric-error-copy" title="${esc(video.metrics_error)}">${uiIcon("alert",13)} ${esc(video.metrics_error)}</div>` : `<div class="metric-source-copy">${uiIcon("activity",13)} ${esc(metricAvailabilityLabel(video) || "Esperando lectura")}</div>`}
+      <div class="global-video-actions"><a class="btn btn-ghost btn-sm" href="${esc(video.video_url)}" target="_blank" rel="noopener">Abrir</a><button class="btn btn-secondary btn-sm" data-admin-report="${video.report_id}">Reporte ${uiIcon("arrow",13)}</button></div></div>
+    </article>`;
+  }
+
+  function bindAdminVideoCards() {
+    $$('[data-admin-report]').forEach(button => button.addEventListener("click", () => openAdminReportDetail(button.dataset.adminReport)));
+  }
+
+  async function renderAdminVideoCenter(force = false) {
+    setHeader("Centro de videos", "Todo el contenido en una sola vista");
+    const data = await loadAdminVideoCenterData(null, force);
+    state.videoCenterFilters = state.videoCenterFilters || { search:"", clipper:"all", account:"all", platform:"all", status:"all" };
+    const filters = state.videoCenterFilters;
+    const visible = adminVideoFilterRows(data.videos, filters);
+    const uniqueClippers = [...new Map(data.videos.map(video => [video.user_id, { id:video.user_id, name:video.clipper_name, username:video.username }])).values()].sort((a,b)=>a.name.localeCompare(b.name,"es"));
+    const availableAccounts = data.accounts.filter(account => filters.clipper === "all" || account.user_id === filters.clipper);
+    const issues = data.videos.filter(video => metricBucket(video) !== "ok").length;
+    const totalViews = data.videos.reduce((sum,video)=>sum+Number(video.views||0),0);
+    $("#content").innerHTML = `<section class="executive-head"><div><span class="section-eyebrow">BIBLIOTECA OPERATIVA</span><h2>${data.videos.length} videos bajo control</h2><p>${num(totalViews)} vistas detectadas en el período.</p></div><div class="executive-actions"><button id="goMetricInbox" class="btn btn-secondary">${uiIcon("alert",15)} ${issues} incidencias</button><button id="goPublicChannel" class="btn btn-primary">${uiIcon("video",15)} Canal público</button></div></section>
+      <section class="video-filter-shell"><div class="video-search-control">${uiIcon("activity",15)}<input id="globalVideoSearch" value="${esc(filters.search)}" placeholder="Buscar video, clipero o cuenta"></div><select id="globalClipperFilter"><option value="all">Todos los cliperos</option>${uniqueClippers.map(item=>`<option value="${item.id}" ${filters.clipper===item.id?"selected":""}>${esc(item.name)} · @${esc(item.username)}</option>`).join("")}</select><select id="globalAccountFilter"><option value="all">Todas las cuentas</option>${availableAccounts.map(account=>`<option value="${account.id}" ${filters.account===account.id?"selected":""}>${esc(account.account_name)} · ${esc(platformLabel(account.platform))}</option>`).join("")}</select><select id="globalPlatformFilter"><option value="all">Todas las redes</option>${Object.keys(PLATFORMS).map(platform=>`<option value="${platform}" ${filters.platform===platform?"selected":""}>${esc(platformLabel(platform))}</option>`).join("")}</select><select id="globalMetricFilter"><option value="all">Todos los estados</option>${["ok","partial","error","syncing","pending"].map(status=>`<option value="${status}" ${filters.status===status?"selected":""}>${metricBucketLabel(status)}</option>`).join("")}</select><button id="refreshVideoCenter" class="btn btn-ghost btn-sm btn-icon-only" title="Recargar">${uiIcon("sync",15)}</button></section>
+      <div class="filter-result-line"><span><b>${visible.length}</b> resultados</span>${Object.values(filters).some(value=>value&&value!=="all")?'<button id="clearVideoFilters" class="btn btn-ghost btn-sm">Limpiar filtros</button>':""}</div>
+      <section class="global-video-grid">${visible.map(video=>adminVideoCard(video)).join("") || '<div class="empty global-empty">No hay videos con estos filtros.</div>'}</section>`;
+    const rerender = () => renderAdminVideoCenter(false);
+    $("#globalVideoSearch")?.addEventListener("input", debounce(event => { filters.search=event.target.value; rerender(); },250));
+    [["globalClipperFilter","clipper"],["globalAccountFilter","account"],["globalPlatformFilter","platform"],["globalMetricFilter","status"]].forEach(([id,key])=>$("#"+id)?.addEventListener("change",event=>{filters[key]=event.target.value;if(key==="clipper")filters.account="all";rerender();}));
+    $("#clearVideoFilters")?.addEventListener("click",()=>{state.videoCenterFilters={search:"",clipper:"all",account:"all",platform:"all",status:"all"};rerender();});
+    $("#refreshVideoCenter")?.addEventListener("click",()=>renderAdminVideoCenter(true));
+    $("#goMetricInbox")?.addEventListener("click",()=>navigate("metrics"));
+    $("#goPublicChannel")?.addEventListener("click",()=>navigate("channel"));
+    bindAdminVideoCards();
+  }
+
+  async function retryMetricBatch(ids) {
+    const clean = [...new Set(ids.filter(Boolean))].slice(0,100);
+    if (!clean.length) return toast("Selecciona al menos un video.","error");
+    if (!confirm(`¿Reintentar la detección de ${clean.length} video${clean.length===1?"":"s"}?`)) return;
+    showLoading(true);
+    try {
+      const result = await invokeProcessor({ action:"sync_metric_batch", video_ids:clean });
+      state.metricSelected = new Set();
+      state.adminVideoData = null;
+      toast(`${result.successful || 0} lecturas completadas · ${result.failed || 0} por revisar`, result.failed ? "" : "success");
+      await renderMetricInbox(true);
+    } catch (error) { toast(errorMessage(error),"error"); }
+    finally { showLoading(false); }
+  }
+
+  async function renderMetricInbox(force = false) {
+    setHeader("Bandeja de métricas", "Detecta, selecciona y reintenta");
+    const data = await loadAdminVideoCenterData(null, force);
+    state.metricSelected = state.metricSelected || new Set();
+    state.metricFilters = state.metricFilters || { platform:"all", clipper:"all", status:"all" };
+    const baseIssues = data.videos.filter(video => metricBucket(video) !== "ok");
+    const issues = adminVideoFilterRows(baseIssues, state.metricFilters);
+    const errors = baseIssues.filter(video=>metricBucket(video)==="error").length;
+    const partial = baseIssues.filter(video=>metricBucket(video)==="partial").length;
+    const pending = baseIssues.filter(video=>["pending","syncing"].includes(metricBucket(video))).length;
+    const clippers = [...new Map(baseIssues.map(video=>[video.user_id,{id:video.user_id,name:video.clipper_name}])).values()].sort((a,b)=>a.name.localeCompare(b.name,"es"));
+    $("#content").innerHTML = `<section class="metric-inbox-hero"><div><span class="section-eyebrow">CONTROL DE CALIDAD</span><h2>${baseIssues.length ? `${baseIssues.length} lecturas requieren atención` : "Métricas al día"}</h2><p>Los datos guardados nunca disminuyen por un fallo temporal.</p></div><div class="metric-inbox-counts"><span class="danger"><b>${errors}</b> errores</span><span class="warning"><b>${partial}</b> parciales</span><span class="neutral"><b>${pending}</b> pendientes</span></div></section>
+      <section class="metric-batch-bar"><div class="metric-batch-filters"><select id="metricPlatformFilter"><option value="all">Todas las redes</option>${Object.keys(PLATFORMS).map(platform=>`<option value="${platform}" ${state.metricFilters.platform===platform?"selected":""}>${platformLabel(platform)}</option>`).join("")}</select><select id="metricClipperFilter"><option value="all">Todos los cliperos</option>${clippers.map(item=>`<option value="${item.id}" ${state.metricFilters.clipper===item.id?"selected":""}>${esc(item.name)}</option>`).join("")}</select><select id="metricStatusFilter"><option value="all">Toda incidencia</option>${["error","partial","pending","syncing"].map(status=>`<option value="${status}" ${state.metricFilters.status===status?"selected":""}>${metricBucketLabel(status)}</option>`).join("")}</select></div><div class="metric-batch-actions"><button id="selectVisibleMetrics" class="btn btn-ghost btn-sm">Seleccionar visibles</button><button id="retrySelectedMetrics" class="btn btn-primary btn-sm">${uiIcon("sync",14)} Reintentar seleccionados</button></div></section>
+      <div class="filter-result-line"><span><b>${issues.length}</b> incidencias visibles · <b id="metricSelectedCount">${state.metricSelected.size}</b> seleccionadas</span><button id="retryAllIssues" class="btn btn-secondary btn-sm">Reintentar visibles</button></div>
+      <section class="global-video-grid metric-inbox-grid">${issues.map(video=>adminVideoCard(video,true)).join("") || `<div class="metric-clean-state"><span>${uiIcon("check",30)}</span><h3>Todo limpio</h3><p>No hay incidencias con estos filtros.</p></div>`}</section>`;
+    const rerender=()=>renderMetricInbox(false);
+    [["metricPlatformFilter","platform"],["metricClipperFilter","clipper"],["metricStatusFilter","status"]].forEach(([id,key])=>$("#"+id)?.addEventListener("change",event=>{state.metricFilters[key]=event.target.value;rerender();}));
+    $$('[data-metric-select]').forEach(input=>input.addEventListener("change",()=>{input.checked?state.metricSelected.add(input.dataset.metricSelect):state.metricSelected.delete(input.dataset.metricSelect);$("#metricSelectedCount").textContent=state.metricSelected.size;}));
+    $("#selectVisibleMetrics")?.addEventListener("click",()=>{issues.forEach(video=>state.metricSelected.add(video.id));rerender();});
+    $("#retrySelectedMetrics")?.addEventListener("click",()=>retryMetricBatch([...state.metricSelected]));
+    $("#retryAllIssues")?.addEventListener("click",()=>retryMetricBatch(issues.map(video=>video.id)));
+    bindAdminVideoCards();
+  }
+
+  async function loadPublicYoutubeFeed(force = false) {
+    if (!force && state.publicYoutubeFeed?.checkedAt && Date.now()-state.publicYoutubeFeed.checkedAt < 5*60*1000) return state.publicYoutubeFeed;
+    const result = await invokeProcessor({ action:"youtube_public_feed", limit:60 });
+    state.publicYoutubeFeed = { items:result.items || [], source:result.source || "public", channelUrl:result.channel_url, checkedAt:Date.now(), checkedLabel:result.checked_at };
+    return state.publicYoutubeFeed;
+  }
+
+  function publicYoutubeCard(item, canImport) {
+    const liveLabel = item.live_status === "live" ? "EN VIVO" : item.live_status === "upcoming" ? "PRÓXIMO" : item.content_type === "live" ? "LIVE" : "VIDEO";
+    const liveClass = item.live_status === "live" ? "is-live" : item.live_status === "upcoming" ? "is-upcoming" : item.content_type === "live" ? "is-stream" : "";
+    const published = item.published_at ? dateOnlyLabel(item.published_at) : item.published_text || "Público";
+    return `<article class="youtube-library-card ${liveClass}"><a class="youtube-library-media" href="${esc(item.url)}" target="_blank" rel="noopener"><img src="${esc(item.thumbnail || `https://i.ytimg.com/vi/${item.id}/hqdefault.jpg`)}" alt="" loading="lazy" referrerpolicy="no-referrer"><span class="youtube-type-badge">${liveLabel}</span><i class="youtube-play">▶</i></a><div class="youtube-library-body"><h3>${esc(item.title)}</h3><p>${esc(published)} · ${item.views!==null&&item.views!==undefined?`${num(item.views)} vistas`:esc(item.views_text||"métricas al abrir")}</p><div class="youtube-library-actions"><a class="btn btn-ghost btn-sm" href="${esc(item.url)}" target="_blank" rel="noopener">Ver</a>${canImport?`<button class="btn btn-primary btn-sm" data-use-youtube="${esc(item.url)}">${uiIcon("plus",13)} Clipear</button>`:""}</div></div></article>`;
+  }
+
+  async function usePublicYoutubeVideo(url) {
+    if (state.profile.role !== "clipper") return;
+    if (!profileComplete(state.profile)) return openProfileModal(true);
+    if (!reportEditable(state.currentSummary)) return toast("El período ya no permite agregar videos.","error");
+    if (!activeAccounts().some(account=>account.platform==="youtube")) {
+      toast("Registra primero tu cuenta de YouTube.","error");
+      return navigate("networks");
+    }
+    openQuickRegisterModal([url]);
+  }
+
+  async function renderPublicYoutube(force = false) {
+    setHeader("Canal público", "Videos y lives listos para clipear");
+    const feed = await loadPublicYoutubeFeed(force);
+    state.youtubeLibraryFilters = state.youtubeLibraryFilters || { type:"all", search:"" };
+    const filters = state.youtubeLibraryFilters;
+    const items = feed.items.filter(item => {
+      if (filters.type === "video" && item.content_type !== "video") return false;
+      if (filters.type === "live" && item.content_type === "video") return false;
+      return !filters.search || String(item.title||"").toLowerCase().includes(filters.search.toLowerCase());
+    });
+    const canImport = state.profile.role === "clipper";
+    const lives = feed.items.filter(item=>item.content_type!=="video").length;
+    $("#content").innerHTML = `<section class="youtube-channel-hero"><div class="youtube-channel-mark">${platformLogo("youtube")}</div><div><span class="section-eyebrow">FUENTE COMPARTIDA</span><h2>Rafael López Aliaga</h2><p>${feed.items.length} publicaciones · ${lives} lives visibles · sin acceso a la cuenta</p></div><a class="btn btn-ghost" href="${esc(feed.channelUrl || "https://www.youtube.com/@rafaellopezaliaga")}" target="_blank" rel="noopener">Abrir canal</a></section>
+      <section class="youtube-library-tools"><div class="youtube-library-tabs"><button data-youtube-type="all" class="${filters.type==="all"?"active":""}">Todo</button><button data-youtube-type="live" class="${filters.type==="live"?"active":""}">Lives</button><button data-youtube-type="video" class="${filters.type==="video"?"active":""}">Videos</button></div><div class="video-search-control">${uiIcon("activity",14)}<input id="youtubeLibrarySearch" value="${esc(filters.search)}" placeholder="Buscar en el canal"></div><button id="refreshYoutubeLibrary" class="btn btn-secondary btn-sm">${uiIcon("sync",14)} Actualizar</button></section>
+      <div class="filter-result-line"><span><b>${items.length}</b> disponibles</span><small>${feed.source.includes("api")?"Datos oficiales + lives públicos":"Lectura pública gratuita"}</small></div>
+      <section class="youtube-library-grid">${items.map(item=>publicYoutubeCard(item,canImport)).join("") || '<div class="empty global-empty">No encontramos contenido con ese filtro.</div>'}</section>`;
+    $$('[data-youtube-type]').forEach(button=>button.addEventListener("click",()=>{filters.type=button.dataset.youtubeType;renderPublicYoutube(false);}));
+    $("#youtubeLibrarySearch")?.addEventListener("input",debounce(event=>{filters.search=event.target.value;renderPublicYoutube(false);},250));
+    $("#refreshYoutubeLibrary")?.addEventListener("click",()=>renderPublicYoutube(true));
+    $$('[data-use-youtube]').forEach(button=>button.addEventListener("click",()=>usePublicYoutubeVideo(button.dataset.useYoutube)));
+  }
+
+  function clipperVideoCenterCard(video, accountMap, editable) {
+    const account = accountMap[video.account_id] || {};
+    const youtubeId = youtubeVideoIdFromUrl(video.video_url);
+    const thumb = video.thumbnail_url || (youtubeId ? `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg` : "");
+    return `<article class="clipper-video-card metric-card-${metricBucket(video)}"><div class="clipper-video-thumb">${thumb?`<img src="${esc(thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer">`:`<span>${platformLogo(video.platform)}</span>`}<b>${video.position}</b></div><div class="clipper-video-info"><div class="global-video-title"><strong>${esc(video.external_title || `Video ${video.position}`)}</strong>${metricBucketBadge(video)}</div><p>${platformLogo(video.platform)} ${esc(account.account_name||platformLabel(video.platform))} · ${dateTimeLabel(video.created_at)}</p><div class="clipper-video-metrics"><span><b>${num(video.views)}</b> vistas</span><span>${num(video.likes)} likes</span><span>${num(video.comments)} coment.</span></div><div class="global-video-actions"><a class="btn btn-ghost btn-sm" href="${esc(video.video_url)}" target="_blank" rel="noopener">Abrir</a><button class="btn btn-secondary btn-sm" data-clipper-sync="${video.id}">${uiIcon("sync",13)} Métricas</button>${editable?`<button class="btn btn-ghost btn-sm" data-edit-video="${video.id}">Editar</button><button class="btn btn-danger btn-sm" data-delete-video="${video.id}">Anular</button>`:""}</div></div></article>`;
+  }
+
+  function renderClipperVideosV240() {
+    setHeader("Mis videos", "Busca, revisa y actualiza");
+    const editable=reportEditable(state.currentSummary);
+    state.clipperVideoFilters=state.clipperVideoFilters||{search:"",platform:"all",status:"all",account:"all"};
+    const f=state.clipperVideoFilters, accountMap=Object.fromEntries(state.accounts.map(account=>[account.id,account]));
+    const visible=state.videos.filter(video=>{
+      if(f.platform!=="all"&&video.platform!==f.platform)return false;
+      if(f.account!=="all"&&video.account_id!==f.account)return false;
+      if(f.status!=="all"&&metricBucket(video)!==f.status)return false;
+      return !f.search||`${video.external_title||""} ${video.video_url} ${accountMap[video.account_id]?.account_name||""}`.toLowerCase().includes(f.search.toLowerCase());
+    });
+    const totalViews=state.videos.reduce((sum,video)=>sum+Number(video.views||0),0);
+    const issues=state.videos.filter(video=>metricBucket(video)!=="ok").length;
+    $("#content").innerHTML=`<section class="executive-head clipper-video-head"><div><span class="section-eyebrow">${weekLabel(state.currentSummary.week_start)}</span><h2>${state.videos.length} videos · ${num(totalViews)} vistas</h2><p>${issues?`${issues} métricas en proceso o por revisar`:"Todas las métricas están al día"}</p></div><button id="quickAddBtn" class="btn btn-primary" ${!editable?"disabled":""}>${uiIcon("plus",15)} Agregar videos</button></section>
+      <section class="video-filter-shell clipper-video-filters"><div class="video-search-control">${uiIcon("activity",14)}<input id="clipperVideoSearch" value="${esc(f.search)}" placeholder="Buscar video o cuenta"></div><select id="clipperPlatformFilter"><option value="all">Todas las redes</option>${Object.keys(PLATFORMS).map(platform=>`<option value="${platform}" ${f.platform===platform?"selected":""}>${platformLabel(platform)}</option>`).join("")}</select><select id="clipperAccountFilter"><option value="all">Todas las cuentas</option>${activeAccounts().map(account=>`<option value="${account.id}" ${f.account===account.id?"selected":""}>${esc(account.account_name)}</option>`).join("")}</select><select id="clipperMetricFilter"><option value="all">Todos los estados</option>${["ok","partial","error","syncing","pending"].map(status=>`<option value="${status}" ${f.status===status?"selected":""}>${metricBucketLabel(status)}</option>`).join("")}</select></section>
+      <div class="filter-result-line"><span><b>${visible.length}</b> resultados</span><button id="openYoutubeFromVideos" class="btn btn-ghost btn-sm">${platformLogo("youtube")} Ver canal público</button></div><section class="clipper-video-grid">${visible.map(video=>clipperVideoCenterCard(video,accountMap,editable)).join("")||'<div class="empty global-empty">No hay videos con estos filtros.</div>'}</section>`;
+    $("#quickAddBtn")?.addEventListener("click",handleQuickRegisterAction);
+    $("#openYoutubeFromVideos")?.addEventListener("click",()=>navigate("channel"));
+    $("#clipperVideoSearch")?.addEventListener("input",debounce(event=>{f.search=event.target.value;renderClipperVideosV240();},250));
+    [["clipperPlatformFilter","platform"],["clipperAccountFilter","account"],["clipperMetricFilter","status"]].forEach(([id,key])=>$("#"+id)?.addEventListener("change",event=>{f[key]=event.target.value;renderClipperVideosV240();}));
+    $$('[data-edit-video]').forEach(button=>button.addEventListener("click",()=>openEditVideoModal(button.dataset.editVideo)));
+    $$('[data-delete-video]').forEach(button=>button.addEventListener("click",()=>deleteClipperVideo(button.dataset.deleteVideo)));
+    $$('[data-clipper-sync]').forEach(button=>button.addEventListener("click",async()=>{button.disabled=true;await syncVideoMetrics(button.dataset.clipperSync);await loadClipperCurrentData();renderClipperVideosV240();}));
+  }
+
+  function periodIntelligenceMarkup(data) {
+    const topVideos=[...data.videos].sort((a,b)=>Number(b.views||0)-Number(a.views||0)).slice(0,3);
+    const accountStats=new Map(data.accounts.filter(account=>account.active!==false).map(account=>[account.id,{...account,videos:0,views:0}]));
+    data.videos.forEach(video=>{const row=accountStats.get(video.account_id);if(row){row.videos+=1;row.views+=Number(video.views||0);}});
+    const weak=[...accountStats.values()].sort((a,b)=>a.views-b.views||a.videos-b.videos).slice(0,3);
+    const pending=data.reports.filter(report=>!["paid","closed","expired"].includes(report.status)&&reportDisplayTotal(report)>0).sort((a,b)=>reportDisplayTotal(b)-reportDisplayTotal(a)).slice(0,3);
+    const topMarkup=topVideos.map((video,index)=>`<button class="intel-list-row" data-admin-report="${video.report_id}"><span class="intel-rank">${index+1}</span><span><b>${esc(video.external_title||video.clipper_name)}</b><small>${esc(video.clipper_name)} · ${esc(video.account_name)}</small></span><strong>${num(video.views)}</strong></button>`).join("")||'<div class="intel-empty">Aún sin videos.</div>';
+    const weakMarkup=weak.map(account=>`<div class="intel-list-row"><span class="intel-dot warning"></span><span><b>${esc(account.account_name||"Cuenta")}</b><small>${esc(platformLabel(account.platform))} · ${account.videos} videos</small></span><strong>${num(account.views)}</strong></div>`).join("")||'<div class="intel-empty">Sin cuentas flojas.</div>';
+    const pendingMarkup=pending.map(report=>`<button class="intel-list-row" data-admin-report="${report.report_id}"><span class="intel-dot danger"></span><span><b>${esc(`${report.names||""} ${report.surnames||""}`.trim()||report.username)}</b><small>${report.payment_account?paymentMethodLabel(report.payment_method):"Falta cuenta de pago"}</small></span><strong>${money(reportDisplayTotal(report))}</strong></button>`).join("")||'<div class="intel-empty">No hay pagos pendientes.</div>';
+    return `<section class="period-intelligence"><article class="intelligence-card intel-top"><div class="intelligence-head"><div><span>TOP</span><h3>Videos líderes</h3></div>${uiIcon("activity",18)}</div>${topMarkup}</article><article class="intelligence-card intel-weak"><div class="intelligence-head"><div><span>ATENCIÓN</span><h3>Cuentas flojas</h3></div>${uiIcon("alert",18)}</div>${weakMarkup}</article><article class="intelligence-card intel-pay"><div class="intelligence-head"><div><span>PAGOS</span><h3>Pendientes</h3></div>${uiIcon("wallet",18)}</div>${pendingMarkup}</article></section>`;
+  }
+
+  async function renderAdminReportsV240() {
+    setHeader("Inicio", "Resumen ejecutivo del período");
+    try { await state.supabase.rpc("clipcontrol_auto_submit_due_reports_v234"); } catch (_) {}
+    const periods=await query(state.supabase.from("reporting_periods").select("*").order("start_date",{ascending:false}).limit(20));
+    if(!state.adminWeek)state.adminWeek=state.activePeriod?.start_date||periods?.[0]?.start_date||currentWeekStartISO();
+    const reports=await query(state.supabase.from("weekly_report_summary").select("*").eq("week_start",state.adminWeek).order("total_views",{ascending:false}));
+    const reportIds=reports.map(report=>report.report_id);
+    const [platformRows,data,paymentRules]=await Promise.all([
+      reportIds.length?query(state.supabase.from("weekly_report_platform_summary").select("*").in("report_id",reportIds)):Promise.resolve([]),
+      loadAdminVideoCenterData(reports,true),
+      query(state.supabase.from("platform_payment_rules").select("*")).catch(()=>[]),
+    ]);
+    state.adminReportIds=reportIds;
+    state.adminPlatformRows=platformRows||[];
+    state.platformRuleMap=Object.fromEntries((paymentRules||[]).map(rule=>[rule.platform,rule]));
+    state.adminRegisteredPlatformsByUser={};
+    for(const account of data.accounts||[]){
+      if(!state.adminRegisteredPlatformsByUser[account.user_id])state.adminRegisteredPlatformsByUser[account.user_id]=[];
+      if(account.active!==false&&!state.adminRegisteredPlatformsByUser[account.user_id].includes(account.platform))state.adminRegisteredPlatformsByUser[account.user_id].push(account.platform);
+    }
+    const aggregate=aggregatePlatformRows(platformRows||[]);
+    const pendingReview=reports.filter(report=>["sent","review","observed"].includes(report.status)).length;
+    const projected=reports.reduce((sum,report)=>sum+reportDisplayTotal(report),0);
+    const metricIssues=data.videos.filter(video=>metricBucket(video)!=="ok").length;
+    const pendingPayments=reports.filter(report=>!["paid","closed","expired"].includes(report.status)&&reportDisplayTotal(report)>0).length;
+    const selectedPeriod=periods.find(period=>period.start_date===state.adminWeek);
+    const totalViews=data.videos.reduce((sum,video)=>sum+Number(video.views||0),0);
+    $("#content").innerHTML=`<section class="admin-command-hero"><div><span class="reports-kicker">PERÍODO ${selectedPeriod?.is_active?"EN VIVO":"HISTÓRICO"}</span><h2>${esc(selectedPeriod?.name||periodRangeLabel(selectedPeriod)||state.adminWeek)}</h2><p>${reports.length} cliperos · ${data.videos.length} videos · ${num(totalViews)} vistas</p></div><div class="admin-command-value"><small>Pago proyectado</small><strong>${money(projected)}</strong><span>${pendingPayments} pagos pendientes</span></div></section>
+      <section class="admin-command-actions"><label class="period-select-v224">${uiIcon("history",15)}<select id="reportPeriodSelect">${periods.map(period=>`<option value="${period.start_date}" ${period.start_date===state.adminWeek?"selected":""}>${esc(period.name||periodRangeLabel(period))}${period.is_active?" · ACTIVO":""}</option>`).join("")}</select></label><button id="goAdminVideos" class="command-action">${uiIcon("video",16)}<span>Videos<small>${data.videos.length} totales</small></span></button><button id="goAdminMetrics" class="command-action ${metricIssues?"has-alert":""}">${uiIcon("alert",16)}<span>Métricas<small>${metricIssues} incidencias</small></span></button><button id="goAdminChannel" class="command-action">${uiIcon("network",16)}<span>Canal<small>Videos y lives</small></span></button><button id="exportReportsBtn" class="command-action">${uiIcon("report",16)}<span>Excel<small>Exportar período</small></span></button></section>
+      <div class="executive-kpi-grid"><article><span>Reportes</span><b>${reports.length}</b><small>${pendingReview} por revisar</small></article><article><span>Métricas</span><b>${data.videos.length-metricIssues}/${data.videos.length}</b><small>lecturas limpias</small></article><article><span>Pagos pendientes</span><b>${pendingPayments}</b><small>${money(projected)} proyectado</small></article><article><span>Cierre</span><b>${dateOnlyLabel(selectedPeriod?.end_date||reports[0]?.week_end)}</b><small>${selectedPeriod?.is_active?"período activo":"período cerrado"}</small></article></div>
+      ${livePlatformCards(aggregate,{})}${periodIntelligenceMarkup(data)}
+      <section class="card report-list-card-v224 executive-report-list"><div class="report-list-head-v224"><div><span class="section-eyebrow">OPERACIÓN</span><h2>Evaluar cliperos</h2><p>Avance y pago separados por red.</p></div><span class="report-live-note"><i></i> En vivo</span></div>${adminReportsTable(reports)}</section>`;
+    $("#reportPeriodSelect")?.addEventListener("change",event=>{state.adminWeek=event.target.value;state.adminVideoData=null;renderAdminReportsV240();});
+    $("#goAdminVideos")?.addEventListener("click",()=>navigate("videos"));
+    $("#goAdminMetrics")?.addEventListener("click",()=>navigate("metrics"));
+    $("#goAdminChannel")?.addEventListener("click",()=>navigate("channel"));
+    $("#exportReportsBtn")?.addEventListener("click",()=>exportWeeklyExcel(reports));
+    bindAdminReportButtons();
+    bindAdminVideoCards();
+    animateDynamicNumbers($("#content"));
+  }
+
+  function buildNavV240() {
+    if(!state.profile)return;
+    const isAdmin=["admin","superadmin"].includes(state.profile.role);
+    if(isAdmin&&state.page==="reports")state.page="dashboard";
+    const items=isAdmin
+      ? [["dashboard","home","Inicio"],["videos","video","Videos"],["metrics","activity","Métricas"],["channel","network","Canal público"],["clippers","users","Accesos"],["payments","wallet","Pagos"],["announcements","megaphone","Comunicados"],["settings","settings","Ajustes"]]
+      : [["dashboard","home","Inicio"],["videos","video","Videos"],["channel","network","Canal público"],["networks","network","Redes"],["history","history","Historial"],["profile","user","Perfil"]];
+    $("#nav").innerHTML=items.map(([id,icon,label])=>`<button data-page="${id}" class="${state.page===id?"active":""}">${navIcon(icon)}<span class="nav-label">${label}</span></button>`).join("");
+    $$('[data-page]',$("#nav")).forEach(button=>button.addEventListener("click",async()=>{state.page=button.dataset.page;state.selectedClipperId=null;$("#sidebar").classList.remove("open");buildNavV240();await touchPresence(true);await renderPage(true);}));
+    const mobile=isAdmin
+      ? [["dashboard","home","Inicio"],["videos","video","Videos"],["metrics","activity","Métricas"],["channel","network","Canal"],["settings","settings","Más"]]
+      : [["dashboard","home","Inicio"],["videos","video","Videos"],["__add","plus","Agregar"],["channel","network","Canal"],["profile","user","Perfil"]];
+    const nav=$("#mobileNav");
+    if(nav){
+      nav.innerHTML=mobile.map(([id,icon,label])=>`<button data-mobile-page="${id}" class="${state.page===id?"active":""} ${id==="__add"?"mobile-add":""}">${uiIcon(icon,18)}${id==="__add"?"":`<span>${label}</span>`}</button>`).join("");
+      $$('[data-mobile-page]',nav).forEach(button=>button.addEventListener("click",async()=>{if(button.dataset.mobilePage==="__add")return handleQuickRegisterAction();state.page=button.dataset.mobilePage;state.selectedClipperId=null;buildNavV240();await touchPresence(true);await renderPage(true);}));
+    }
+  }
+
+  async function renderAdminPageV240() {
+    if(state.page==="dashboard"||state.page==="reports")return renderAdminReportsV240();
+    if(state.page==="videos")return renderAdminVideoCenter();
+    if(state.page==="metrics")return renderMetricInbox();
+    if(state.page==="channel")return renderPublicYoutube();
+    if(state.page==="clippers")return state.selectedClipperId?renderClipperAdminDetail():renderAdminClippers();
+    if(state.page==="payments")return renderAdminPayments();
+    if(state.page==="announcements")return renderAdminAnnouncements();
+    if(state.page==="settings")return renderAdminSettings();
+    state.page="dashboard";
+    return renderAdminReportsV240();
+  }
+
+  async function renderClipperPageV240() {
+    if(["dashboard","videos","networks","channel"].includes(state.page))await loadClipperCurrentData();
+    if(state.page==="dashboard")return renderClipperDashboard();
+    if(state.page==="videos")return renderClipperVideosV240();
+    if(state.page==="channel")return renderPublicYoutube();
+    if(state.page==="networks")return renderNetworks();
+    if(state.page==="history")return renderClipperHistory();
+    if(state.page==="profile")return renderProfilePage();
+    state.page="dashboard";
+    return renderClipperDashboard();
   }
 
   async function query(promise) {
@@ -708,7 +1148,7 @@
     openQuickRegisterModal();
   }
 
-  function openQuickRegisterModal() {
+  function openQuickRegisterModal(initialUrls = []) {
     const s = state.currentSummary;
     const registeredAccounts = activeAccounts();
     if (!registeredAccounts.length) return toast("Primero registra una cuenta social.", "error");
@@ -721,20 +1161,37 @@
 
     const usedPositions = new Set(state.videos.map((video) => Number(video.position)));
     draftRows = draftRows.filter((row) => !usedPositions.has(Number(row.position)));
+    const preparedUrls = [...new Set((Array.isArray(initialUrls) ? initialUrls : [initialUrls])
+      .map((value) => normalizeUrl(value))
+      .filter((value) => videoUrlValidation(value).ok && !(state.videos || []).some((video) => canonicalVideoUrl(video.video_url) === canonicalVideoUrl(value))))];
+    if (preparedUrls.length) {
+      const positions = nextFreePositions(preparedUrls.length);
+      draftRows = preparedUrls.map((video_url, index) => {
+        const platform = inferPlatformFromUrl(video_url) || "youtube";
+        return { position: positions[index], platform, account_id: preferredAccountIdForPlatform(registeredAccounts, platform), video_url };
+      });
+    }
     if (!draftRows.length) {
       const initialCount = Math.max(1, Number(state.settings?.default_slots || DEFAULT_BATCH_ROWS));
       draftRows = nextFreePositions(initialCount).map((position) => ({ position, platform: registeredAccounts[0]?.platform || "tiktok", account_id: "", video_url: "" }));
     }
 
     openModal(`
-      <div class="modal-head"><div><h2>Agregar videos</h2><p>Completa solo las filas que necesites. Las métricas se detectan automáticamente.</p></div><button id="quickX" class="modal-close" title="Cerrar">×</button></div>
+      <div class="modal-head"><div><h2>Agregar videos</h2><p>Pega enlaces y guarda. Las métricas se detectan solas.</p></div><button id="quickX" class="modal-close" title="Cerrar">×</button></div>
       <div class="modal-body">
-        <div class="batch-toolbar"><span id="rowCounter" class="chip">${draftRows.length} filas en esta carga</span><button id="addBatchRowBtn" class="btn btn-secondary btn-sm">＋ Agregar fila</button></div>
+        <div class="quick-import-panel">
+          <div class="quick-import-copy"><strong>Pegado masivo</strong><small>Un enlace por línea.</small></div>
+          <div class="quick-import-box">
+            <textarea id="bulkUrlInput" rows="4" placeholder="https://www.youtube.com/watch?v=...\nhttps://www.tiktok.com/@usuario/video/...\nhttps://www.instagram.com/reel/..."></textarea>
+            <div class="quick-import-actions"><button id="pasteRowsBtn" class="btn btn-secondary btn-sm">Crear filas</button><span id="bulkImportState" class="draft-note">Se completará cuenta si solo existe una para esa red.</span></div>
+          </div>
+        </div>
+        <div class="batch-toolbar"><span id="rowCounter" class="chip">${draftRows.length} filas</span><button id="addBatchRowBtn" class="btn btn-secondary btn-sm">＋ Fila</button></div>
         <div class="quick-table table-wrap"><table><thead><tr><th>N.°</th><th>Plataforma</th><th>Cuenta</th><th>Enlace del video</th><th>Detección</th><th></th></tr></thead><tbody id="quickRows">${draftRows.map((row) => quickRow(row.position, row.platform, row.account_id, row.video_url, registeredAccounts)).join("")}</tbody></table></div>
       </div>
-      <div class="modal-foot"><div id="draftState" class="draft-note">Puedes guardar desde una sola fila.</div><div class="actions"><button id="clearDraftBtn" class="btn btn-ghost">Limpiar</button><button id="saveQuickBtn" class="btn btn-primary">Guardar y detectar</button></div></div>`, "", (layer) => {
+      <div class="modal-foot"><div id="draftState" class="draft-note">Borrador automático activo.</div><div class="actions"><button id="clearDraftBtn" class="btn btn-ghost">Limpiar</button><button id="saveQuickBtn" class="btn btn-primary">Guardar y detectar</button></div></div>`, "", (layer) => {
         const tbody = $("#quickRows", layer);
-        const updateCounter = () => { $("#rowCounter", layer).textContent = `${$$('tr[data-position]', tbody).length} filas en esta carga`; };
+        const updateCounter = () => { $("#rowCounter", layer).textContent = `${$$('tr[data-position]', tbody).length} filas`; };
         const serialize = () => $$('tr[data-position]', tbody).map((tr) => ({
           position: Number(tr.dataset.position),
           platform: $("[data-field=platform]", tr).value,
@@ -753,6 +1210,48 @@
           updateCounter();
           saveDraft();
           tbody.lastElementChild?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        };
+        const importBulkUrls = () => {
+          const input = $("#bulkUrlInput", layer);
+          const status = $("#bulkImportState", layer);
+          const entries = parseBulkVideoUrls(input.value);
+          if (!entries.length) {
+            status.textContent = "Pega al menos un enlace para crear filas.";
+            return;
+          }
+          const currentRows = $$('tr[data-position]', tbody);
+          const currentUrls = new Set(currentRows.map((tr) => canonicalVideoUrl($("[data-field=url]", tr).value)).filter(Boolean));
+          const existingUrls = new Set((state.videos || []).map((video) => canonicalVideoUrl(video.video_url)).filter(Boolean));
+          const currentPositions = new Set([...usedPositions, ...currentRows.map((tr) => Number(tr.dataset.position))]);
+          const results = { added: 0, duplicates: 0, invalid: 0 };
+
+          for (const rawEntry of entries) {
+            const validation = videoUrlValidation(rawEntry);
+            if (!validation.ok) {
+              results.invalid += 1;
+              continue;
+            }
+            const canonical = canonicalVideoUrl(validation.url);
+            if (!canonical || currentUrls.has(canonical) || existingUrls.has(canonical)) {
+              results.duplicates += 1;
+              continue;
+            }
+            let position = 1;
+            while (currentPositions.has(position)) position += 1;
+            currentPositions.add(position);
+            currentUrls.add(canonical);
+            const platform = validation.platform || registeredAccounts[0]?.platform || "tiktok";
+            const accountId = preferredAccountIdForPlatform(registeredAccounts, platform);
+            tbody.insertAdjacentHTML("beforeend", quickRow(position, platform, accountId, validation.url, registeredAccounts));
+            results.added += 1;
+          }
+
+          updateCounter();
+          saveDraft();
+          input.value = "";
+          status.textContent = results.added
+            ? `${results.added} enlace(s) agregado(s)${results.duplicates ? ` · ${results.duplicates} repetido(s)` : ""}${results.invalid ? ` · ${results.invalid} inválido(s)` : ""}`
+            : "No se agregó ningún enlace nuevo.";
         };
 
         tbody.addEventListener("change", (event) => {
@@ -776,6 +1275,7 @@
           saveDraft();
         });
         $("#addBatchRowBtn", layer).addEventListener("click", addRow);
+        $("#pasteRowsBtn", layer).addEventListener("click", importBulkUrls);
         $("#quickX", layer).addEventListener("click", closeModal);
         $("#clearDraftBtn", layer).addEventListener("click", () => {
           if (!confirm("¿Limpiar las filas sin guardar?")) return;
@@ -809,6 +1309,8 @@
   async function saveQuickRows(layer, registeredAccounts, draftKey) {
     const button = $("#saveQuickBtn", layer);
     const rows = [];
+    const seenUrls = new Set();
+    const existingUrls = new Set((state.videos || []).map((video) => canonicalVideoUrl(video.video_url)).filter(Boolean));
     for (const tr of $$("tr[data-position]", layer)) {
       const position = Number(tr.dataset.position);
       const accountId = $("[data-field=account]", tr).value;
@@ -822,9 +1324,14 @@
       }
       const account = registeredAccounts.find((item) => item.id === accountId);
       if (!account) return toast(`Cuenta inválida en la fila ${position}.`, "error");
-      const videoUrl = normalizeUrl(rawUrl);
+      const validation = videoUrlValidation(rawUrl, account.platform);
+      if (!validation.ok) return toast(`Fila ${position}: ${validation.reason}`, "error");
+      const videoUrl = validation.url;
+      const canonical = canonicalVideoUrl(videoUrl);
+      if (seenUrls.has(canonical)) return toast(`El enlace de la fila ${position} está repetido en esta carga.`, "error");
+      if (existingUrls.has(canonical)) return toast(`El enlace de la fila ${position} ya fue registrado en este período.`, "error");
+      seenUrls.add(canonical);
       urlInput.value = videoUrl;
-      if (!isValidHttpUrl(videoUrl)) return toast(`El enlace de la fila ${position} no es válido.`, "error");
       rows.push({ position, account_id: accountId, video_url: videoUrl, views: 0, likes: 0 });
     }
     if (!rows.length) return toast("Completa al menos una fila para guardar.", "error");
@@ -3031,6 +3538,41 @@
     finally{state.session=null;state.profile=null;state.currentReportId=null;showLogin();showLoading(false);setLiveStatus("syncing","Conectando");}
   }
 
+  function metricSourceLabel(source = "") {
+    const value = String(source || "").trim().toLowerCase();
+    const map = {
+      "public-youtube": "YouTube publico",
+      "public-youtube-verified": "YouTube público verificado",
+      "public-youtube-partial": "YouTube público parcial",
+      "youtube-data-api-verified": "YouTube API oficial",
+      "public-instagram": "Instagram publico",
+      "public-instagram-verified": "Instagram público verificado",
+      "public-instagram-partial": "Instagram público parcial",
+      "tiktok-verified-compact": "TikTok verificado",
+      "tiktok-partial-compact": "TikTok parcial",
+      "tiktok-metadata-only": "TikTok basico",
+      "facebook-verified-compact": "Facebook verificado",
+      "facebook-partial-compact": "Facebook parcial",
+      "facebook-limited-compact": "Facebook limitado",
+    };
+    return map[value] || (value ? value.replaceAll("-", " ") : "");
+  }
+
+  function metricAvailabilityLabel(video) {
+    const meta = video?.metrics_meta && typeof video.metrics_meta === "object" ? video.metrics_meta : {};
+    const availability = meta?.availability && typeof meta.availability === "object" ? meta.availability : {};
+    const detected = [];
+    if (availability.views === true) detected.push("vistas");
+    if (availability.likes === true) detected.push("likes");
+    if (availability.comments === true) detected.push("coment.");
+    if (availability.shares === true) detected.push("comp.");
+    const source = metricSourceLabel(video?.metrics_source);
+    if (video?.metrics_error) return source ? `${source} · revisar` : "Revisar";
+    if (source && detected.length) return `${source} · ${detected.join(" · ")}`;
+    if (source) return source;
+    return detected.length ? detected.join(" · ") : "";
+  }
+
 
 
 
@@ -3043,7 +3585,8 @@
       const actions=`<div class="actions table-actions">${syncButton}${canManage?`<button class="btn btn-ghost btn-sm" data-edit-video="${video.id}">Editar</button><button class="btn btn-danger btn-sm" data-delete-video="${video.id}">Anular</button>`:""}</div>`;
       const thumb=video.thumbnail_url?`<img class="video-thumb" src="${esc(video.thumbnail_url)}" alt="" loading="lazy" referrerpolicy="no-referrer">`:`<span class="video-thumb" style="display:grid;place-items:center">${platformLogo(video.platform)}</span>`;
       const views=Number(video.views||0)>0?num(video.views):'<span class="muted">Pendiente</span>';
-      return `<tr><td><b>${video.position}</b></td><td>${platformBadge(video.platform,true)}<br><small>${esc(account.account_name||"—")}</small></td><td><div style="display:flex;align-items:center;gap:8px;min-width:0">${thumb}<div style="min-width:0"><a href="${esc(video.video_url)}" target="_blank" rel="noopener">Abrir video</a>${video.external_title?`<small class="muted" style="display:block;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(video.external_title)}</small>`:""}</div></div></td><td><div class="report-metric-main">${uiIcon("eye",13)}<b>${views}</b></div></td><td><div class="report-like-line">${uiIcon("heart",11)} ${num(video.likes||0)} likes</div><small>${num(video.comments||0)} comentarios · ${num(video.shares||0)} compartidos</small></td><td>${metricStatus(video)}<br><small>${dateTimeLabel(video.metrics_checked_at)}</small></td>${admin?`<td>${dateTimeLabel(video.created_at)}</td>`:""}<td>${actions}</td></tr>`;
+      const metricHint = metricAvailabilityLabel(video);
+      return `<tr><td><b>${video.position}</b></td><td>${platformBadge(video.platform,true)}<br><small>${esc(account.account_name||"—")}</small></td><td><div style="display:flex;align-items:center;gap:8px;min-width:0">${thumb}<div style="min-width:0"><a href="${esc(video.video_url)}" target="_blank" rel="noopener">Abrir video</a>${video.external_title?`<small class="muted" style="display:block;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(video.external_title)}</small>`:""}</div></div></td><td><div class="report-metric-main">${uiIcon("eye",13)}<b>${views}</b></div></td><td><div class="report-like-line">${uiIcon("heart",11)} ${num(video.likes||0)} likes</div><small>${num(video.comments||0)} comentarios · ${num(video.shares||0)} compartidos</small></td><td>${metricStatus(video)}<br><small>${dateTimeLabel(video.metrics_checked_at)}</small>${metricHint ? `<br><small class="muted">${esc(metricHint)}</small>` : ""}</td>${admin?`<td>${dateTimeLabel(video.created_at)}</td>`:""}<td>${actions}</td></tr>`;
     }).join("");
     return `<div class="table-wrap compact-table video-table"><table><thead><tr><th>N.°</th><th>Red / Cuenta</th><th>Video</th><th>Vistas</th><th>Interacciones</th><th>Estado</th>${admin?"<th>Fecha</th>":""}<th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }
@@ -3749,10 +4292,11 @@
       </section>
       <section class="network-progress-section network-progress-section-v234"><div class="section-title-row"><div><span class="section-eyebrow">AVANCE POR RED</span><h3>Tus plataformas</h3><p>Cada red conserva su propia meta, vistas y pago.</p></div><button id="goNetworksBtn" class="btn btn-ghost btn-sm">${uiIcon("network",14)} Administrar redes</button></div>${clipperPlatformProgressCards()}</section>
       <div class="clipper-action-strip clipper-action-strip-v234"><div class="clipper-action-primary"><div><span>CONTENIDO</span><h3>Registrar videos</h3><p>${editable ? "Pega tus enlaces y continúa trabajando hasta la fecha límite." : "El período ya no permite cambios."}</p></div><button id="quickAddBtn" class="btn btn-primary" ${!editable ? "disabled" : ""}>${uiIcon("plus")} Agregar videos</button></div><div class="auto-submit-card-v234">${uiIcon("check",16)}<div><strong>Entrega automática</strong><small>${deadlinePassed ? "Reporte enviado por cierre" : `Se enviará ${dateTimeLabel(s?.submission_deadline)}`}</small></div></div></div>
-      <section class="card compact-card recent-content-card recent-content-card-v234"><div class="card-head"><div><h2>Videos recientes</h2><p>Tu contenido y sus vistas, sin bloques repetidos.</p></div><button id="viewVideosBtn" class="btn btn-ghost btn-sm">Ver todos ${uiIcon("arrow",14)}</button></div>${recentVideoCards(state.videos)}</section>`;
+      <section class="card compact-card recent-content-card recent-content-card-v234"><div class="card-head"><div><h2>Videos recientes</h2><p>Tu contenido y sus vistas, sin bloques repetidos.</p></div><div class="actions"><button id="refreshMyMetricsBtn" class="btn btn-secondary btn-sm">${uiIcon("sync",14)} Métricas</button><button id="viewVideosBtn" class="btn btn-ghost btn-sm">Ver todos ${uiIcon("arrow",14)}</button></div></div>${recentVideoCards(state.videos)}</section>`;
     $("#quickAddBtn")?.addEventListener("click",handleQuickRegisterAction);
     $("#quickProfilePhoto")?.addEventListener("click",()=>navigate("profile"));
     $("#viewVideosBtn")?.addEventListener("click",()=>{state.videoFilterPlatform="all";navigate("videos");});
+    $("#refreshMyMetricsBtn")?.addEventListener("click",async()=>{showLoading(true);try{await runLiveMetricSync(false);await renderPage(true);}finally{showLoading(false);}});
     $("#goNetworksBtn")?.addEventListener("click",()=>navigate("networks"));
     animateDynamicNumbers($("#content"));
   }
@@ -3798,13 +4342,15 @@
     const aggregate = aggregatePlatformRows(platformRows || []);
     const pending = reports.filter(r=>["sent","review","observed"].includes(r.status)).length;
     const projected = reports.reduce((sum,r)=>sum+reportDisplayTotal(r),0);
+    const metricIssues = (platformRows || []).reduce((sum,row)=>sum + (Number(row.views || 0) > 0 ? 0 : 1), 0);
     const selectedPeriod = periods.find(p=>p.start_date===state.adminWeek);
     $("#content").innerHTML = `
-      <section class="reports-home-v224 reports-home-v234"><div class="reports-home-top"><div><span class="reports-kicker">PERÍODO</span><h2>${esc(selectedPeriod?.name || periodRangeLabel(selectedPeriod) || state.adminWeek)}</h2><p>${selectedPeriod?.is_active ? '<span class="period-live-dot"></span>Activo' : 'Histórico'} · ${reports.length} cliperos · pago sin techo</p></div><div class="reports-home-actions"><label class="period-select-v224">${uiIcon("history",15)}<select id="reportPeriodSelect">${periods.map(p=>`<option value="${p.start_date}" ${p.start_date===state.adminWeek?"selected":""}>${esc(p.name||periodRangeLabel(p))}${p.is_active?" · ACTIVO":""}</option>`).join("")}</select></label><button id="exportReportsBtn" class="btn btn-secondary btn-sm">${uiIcon("report",14)} Excel</button></div></div>
+      <section class="reports-home-v224 reports-home-v234"><div class="reports-home-top"><div><span class="reports-kicker">PERÍODO</span><h2>${esc(selectedPeriod?.name || periodRangeLabel(selectedPeriod) || state.adminWeek)}</h2><p>${selectedPeriod?.is_active ? '<span class="period-live-dot"></span>Activo' : 'Histórico'} · ${reports.length} cliperos · pago sin techo</p></div><div class="reports-home-actions"><label class="period-select-v224">${uiIcon("history",15)}<select id="reportPeriodSelect">${periods.map(p=>`<option value="${p.start_date}" ${p.start_date===state.adminWeek?"selected":""}>${esc(p.name||periodRangeLabel(p))}${p.is_active?" · ACTIVO":""}</option>`).join("")}</select></label><button id="refreshDueMetricsBtn" class="btn btn-secondary btn-sm">${uiIcon("sync",14)} Métricas</button><button id="exportReportsBtn" class="btn btn-secondary btn-sm">${uiIcon("report",14)} Excel</button></div></div>
       ${livePlatformCards(aggregate,{})}
-      <div class="report-mini-summary-v224"><div><span>Reportes</span><strong>${reports.length}</strong></div><div><span>Por revisar</span><strong>${pending}</strong></div><div><span>Pago proyectado</span><strong>${money(projected)}</strong><small>proporcional sin límite</small></div><div><span>Cierre</span><strong>${dateOnlyLabel(selectedPeriod?.end_date||reports[0]?.week_end)}</strong></div></div></section>
+      <div class="report-mini-summary-v224"><div><span>Reportes</span><strong>${reports.length}</strong></div><div><span>Por revisar</span><strong>${pending}</strong></div><div><span>Métricas flojas</span><strong>${metricIssues}</strong><small>redes sin vistas detectadas</small></div><div><span>Pago proyectado</span><strong>${money(projected)}</strong><small>proporcional sin límite</small></div><div><span>Cierre</span><strong>${dateOnlyLabel(selectedPeriod?.end_date||reports[0]?.week_end)}</strong></div></div></section>
       <section class="card report-list-card-v224"><div class="report-list-head-v224"><div><h2>Evaluar cliperos</h2><p>El avance se divide por las redes registradas de cada clipero.</p></div><span class="report-live-note"><i></i> En vivo</span></div>${adminReportsTable(reports)}</section>`;
     $("#reportPeriodSelect")?.addEventListener("change",e=>{state.adminWeek=e.target.value;renderAdminReports();});
+    $("#refreshDueMetricsBtn")?.addEventListener("click",async()=>{showLoading(true);try{await runLiveMetricSync(false);await renderAdminReports();}finally{showLoading(false);}});
     $("#exportReportsBtn")?.addEventListener("click",()=>exportWeeklyExcel(reports));
     bindAdminReportButtons();
     animateDynamicNumbers($("#content"));
@@ -3878,16 +4424,155 @@
   async function exportWeeklyExcel(reports) {
     let platformRows = state.adminPlatformRows || [];
     const reportIds = (reports||[]).map(r=>r.report_id);
+    const userIds = [...new Set((reports||[]).map(r=>r.user_id).filter(Boolean))];
     if (reportIds.length && !platformRows.some(row=>reportIds.includes(row.report_id))) {
       platformRows = await query(state.supabase.from("weekly_report_platform_summary").select("*").in("report_id",reportIds));
     }
+    const [videoRows,socialAccounts] = await Promise.all([
+      reportIds.length ? query(state.supabase.from("videos").select("id,report_id,user_id,platform,account_id,position,video_url,views,likes,comments,shares,external_title,metrics_status,created_at").in("report_id",reportIds).is("deleted_at",null).order("position")) : Promise.resolve([]),
+      userIds.length ? query(state.supabase.from("social_accounts").select("id,user_id,platform,account_name,channel_url,active").in("user_id",userIds)) : Promise.resolve([]),
+    ]);
     const byReport={}; for(const row of platformRows){if(!byReport[row.report_id])byReport[row.report_id]={};byReport[row.report_id][row.platform]=row;}
-    const safe=value=>String(value??"").replace(/[<&]/g,c=>c==="<"?"&lt;":"&amp;");
-    const headers=["Usuario","Clipero","Videos","TikTok vistas","TikTok pago","Instagram vistas","Instagram pago","YouTube vistas","YouTube pago","Facebook vistas","Facebook pago","Pago por vistas","Bono adicional","Pago total","Estado","Cierre"];
-    const rows=(reports||[]).map(r=>{const p=byReport[r.report_id]||{};const base=Object.values(p).reduce((sum,row)=>sum+uncappedPlatformPay(row),0);return [r.username,`${r.names||""} ${r.surnames||""}`.trim(),Number(r.video_count||0),Number(p.tiktok?.views||0),uncappedPlatformPay(p.tiktok),Number(p.instagram?.views||0),uncappedPlatformPay(p.instagram),Number(p.youtube?.views||0),uncappedPlatformPay(p.youtube),Number(p.facebook?.views||0),uncappedPlatformPay(p.facebook),base,Number(r.bonus_pay||0),base+Number(r.bonus_pay||0),STATUS_LABELS[r.status],dateTimeLabel(r.submission_deadline)];});
-    const xmlRows=[headers,...rows].map(row=>`<Row>${row.map(cell=>`<Cell><Data ss:Type="${typeof cell==="number"?"Number":"String"}">${safe(cell)}</Data></Cell>`).join("")}</Row>`).join("");
-    const xml=`<?xml version="1.0"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="Reporte"><Table>${xmlRows}</Table></Worksheet></Workbook>`;
-    const blob=new Blob(["\ufeff",xml],{type:"application/vnd.ms-excel"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=`ClipControl_${state.adminWeek||currentWeekStartISO()}_sin_techo.xls`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);toast("Reporte exportado con pago proporcional sin techo","success");
+    const accountMap = Object.fromEntries((socialAccounts || []).map(account => [account.id, account]));
+    const reportMap = Object.fromEntries((reports || []).map(report => [report.report_id, report]));
+    const safeXml=value=>String(value??"")
+      .replaceAll("&","&amp;")
+      .replaceAll("<","&lt;")
+      .replaceAll(">","&gt;")
+      .replaceAll('"',"&quot;")
+      .replaceAll("'","&apos;");
+    const cell=(value,type=null)=>{
+      const resolvedType = type || (typeof value==="number" && Number.isFinite(value) ? "Number" : "String");
+      const cellValue = resolvedType === "Number" ? Number(value || 0) : safeXml(value);
+      return `<Cell><Data ss:Type="${resolvedType}">${cellValue}</Data></Cell>`;
+    };
+    const rowXml=(cells)=>`<Row>${cells.map(item=>Array.isArray(item)?cell(item[0],item[1]):cell(item)).join("")}</Row>`;
+    const sheet=(name,rows)=>`<Worksheet ss:Name="${safeXml(name)}"><Table>${rows.map(rowXml).join("")}</Table></Worksheet>`;
+
+    const detailHeaders=["Usuario","Clipero","Método pago","Cuenta pago","Titular","Videos","TikTok vistas","TikTok pago","Instagram vistas","Instagram pago","YouTube vistas","YouTube pago","Facebook vistas","Facebook pago","Pago por vistas","Bono adicional","Pago total","Estado","Cierre"];
+    const detailRows=(reports||[]).map(r=>{
+      const p=byReport[r.report_id]||{};
+      const base=Math.round(Object.values(p).reduce((sum,row)=>sum+uncappedPlatformPay(row),0)*100)/100;
+      const bonus=Number(r.bonus_pay||0);
+      return [
+        r.username||"",
+        `${r.names||""} ${r.surnames||""}`.trim(),
+        paymentMethodLabel(r.payment_method),
+        r.payment_account || "",
+        r.payment_holder || "",
+        Number(r.video_count||0),
+        Number(p.tiktok?.views||0),
+        uncappedPlatformPay(p.tiktok),
+        Number(p.instagram?.views||0),
+        uncappedPlatformPay(p.instagram),
+        Number(p.youtube?.views||0),
+        uncappedPlatformPay(p.youtube),
+        Number(p.facebook?.views||0),
+        uncappedPlatformPay(p.facebook),
+        base,
+        bonus,
+        Math.round((base+bonus)*100)/100,
+        STATUS_LABELS[r.status]||r.status||"",
+        dateTimeLabel(r.submission_deadline),
+      ];
+    });
+    const aggregateRows = aggregatePlatformRows(platformRows || []);
+    const totals = {
+      clippers: Number((reports||[]).length),
+      videos: (reports||[]).reduce((sum, report) => sum + Number(report.video_count || 0), 0),
+      views: (reports||[]).reduce((sum, report) => sum + Number(report.total_views || 0), 0),
+      base: Math.round((reports||[]).reduce((sum, report) => sum + reportUncappedBase(report), 0) * 100) / 100,
+      bonus: Math.round((reports||[]).reduce((sum, report) => sum + Number(report.bonus_pay || 0), 0) * 100) / 100,
+      missingPayment: (reports||[]).filter(report => !String(report.payment_account || "").trim()).length,
+    };
+    const totalPay = Math.round((totals.base + totals.bonus) * 100) / 100;
+    const accountRollup = new Map();
+    for (const video of (videoRows || [])) {
+      const report = reportMap[video.report_id];
+      if (!report) continue;
+      const account = accountMap[video.account_id] || {};
+      const key = `${video.report_id}:${video.account_id || `${video.platform}:sin-cuenta`}`;
+      if (!accountRollup.has(key)) {
+        accountRollup.set(key, {
+          username: report.username || "",
+          clipero: `${report.names || ""} ${report.surnames || ""}`.trim(),
+          payment_method: paymentMethodLabel(report.payment_method),
+          payment_account: report.payment_account || "",
+          platform: platformLabel(video.platform),
+          account_name: account.account_name || "Sin cuenta asignada",
+          channel_url: account.channel_url || "",
+          videos: 0,
+          views: 0,
+          likes: 0,
+          comments: 0,
+          shares: 0,
+        });
+      }
+      const row = accountRollup.get(key);
+      row.videos += 1;
+      row.views += Number(video.views || 0);
+      row.likes += Number(video.likes || 0);
+      row.comments += Number(video.comments || 0);
+      row.shares += Number(video.shares || 0);
+    }
+    const accountRows = [...accountRollup.values()]
+      .sort((a,b)=>a.clipero.localeCompare(b.clipero,"es") || a.platform.localeCompare(b.platform,"es") || a.account_name.localeCompare(b.account_name,"es"))
+      .map(row => [row.username,row.clipero,row.payment_method,row.payment_account,row.platform,row.account_name,row.channel_url,row.videos,row.views,row.likes,row.comments,row.shares]);
+    const videoSheetHeaders = ["Clipero","Usuario","Método pago","Cuenta pago","Plataforma","Cuenta social","Posición","Título","URL","Vistas","Likes","Comentarios","Compartidos","Estado métrica","Registrado"];
+    const videoSheetRows = (videoRows || []).map(video => {
+      const report = reportMap[video.report_id] || {};
+      const account = accountMap[video.account_id] || {};
+      return [
+        `${report.names || ""} ${report.surnames || ""}`.trim(),
+        report.username || "",
+        paymentMethodLabel(report.payment_method),
+        report.payment_account || "",
+        platformLabel(video.platform),
+        account.account_name || "",
+        Number(video.position || 0),
+        video.external_title || "",
+        video.video_url || "",
+        Number(video.views || 0),
+        Number(video.likes || 0),
+        Number(video.comments || 0),
+        Number(video.shares || 0),
+        video.metrics_status || "",
+        dateTimeLabel(video.created_at),
+      ];
+    });
+    const summaryRows = [
+      ["Período", periodRangeLabel({ week_start: state.adminWeek, week_end: (() => { const date = new Date(`${state.adminWeek || currentWeekStartISO()}T12:00:00Z`); date.setUTCDate(date.getUTCDate() + 6); return date.toISOString().slice(0, 10); })() })],
+      ["Exportado", dateTimeLabel(new Date().toISOString())],
+      ["Cliperos", totals.clippers],
+      ["Videos", totals.videos],
+      ["Vistas totales", totals.views],
+      ["Pago por vistas", totals.base],
+      ["Bonos", totals.bonus],
+      ["Pago total", totalPay],
+      ["Sin datos de pago", totals.missingPayment],
+      [""],
+      ["Clipero","Método pago","Cuenta pago","Titular","Estado","Pago total"],
+      ...(reports||[]).map(report => [`${report.names || ""} ${report.surnames || ""}`.trim(), paymentMethodLabel(report.payment_method), report.payment_account || "Pendiente", report.payment_holder || "", STATUS_LABELS[report.status] || report.status || "", reportDisplayTotal(report)]),
+      [""],
+      ["Red","Videos","Vistas","Likes","Comentarios","Compartidos","Pago proyectado"],
+      ...aggregateRows.map(row => [platformLabel(row.platform), Number(row.video_count||0), Number(row.views||0), Number(row.likes||0), Number(row.comments||0), Number(row.shares||0), Math.round(Number(row.uncapped_pay||0)*100)/100]),
+    ];
+    const workbook = `<?xml version="1.0"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+${sheet("Resumen", summaryRows)}
+${sheet("Cliperos", [detailHeaders, ...detailRows])}
+${sheet("Cuentas", [["Usuario","Clipero","Método pago","Cuenta pago","Plataforma","Cuenta social","Canal","Videos","Vistas","Likes","Comentarios","Compartidos"], ...accountRows])}
+${sheet("Videos", [videoSheetHeaders, ...videoSheetRows])}
+</Workbook>`;
+    const filenameDate = String(state.adminWeek || currentWeekStartISO()).replace(/[^\d-]/g,"");
+    const blob=new Blob(["\ufeff",workbook],{type:"application/vnd.ms-excel"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url;
+    a.download=`ClipControl_${filenameDate}_resumen.xls`;
+    a.click();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+    toast("Excel exportado con resumen y detalle", "success");
   }
 
   async function loadClipperCurrentData() {
@@ -3948,6 +4633,13 @@
     return msg;
   }
 
+
+  // La ultima capa gana sobre las versiones historicas conservadas en el archivo.
+  function buildNav() { return buildNavV240(); }
+  async function renderAdminPage() { return renderAdminPageV240(); }
+  async function renderClipperPage() { return renderClipperPageV240(); }
+  async function renderAdminReports() { return renderAdminReportsV240(); }
+  function renderClipperVideos() { return renderClipperVideosV240(); }
 
   window.addEventListener("DOMContentLoaded", init);
 })();
