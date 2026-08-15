@@ -171,8 +171,14 @@
       }
 
       if (platform === "facebook") {
-        const valid = host === "fb.watch" || /\/videos\//i.test(path) || path === "/watch" || /^\/watch\//i.test(path) || /\/share\/v\//i.test(path);
-        if (!valid) return { ok: false, url: videoUrl, reason: "Usa un enlace directo del video o live de Facebook." };
+        const valid = host === "fb.watch"
+          || /\/(?:videos|reel|reels)\//i.test(path)
+          || path === "/watch" || /^\/watch\//i.test(path)
+          || /\/share\/(?:v|r|p)\//i.test(path)
+          || /\/(?:posts|permalink)\//i.test(path)
+          || /\/story\.php$/i.test(path)
+          || /\/photo(?:\.php)?$/i.test(path);
+        if (!valid) return { ok: false, url: videoUrl, reason: "Usa un enlace directo del video, reel, live o publicación de Facebook." };
       }
 
       return { ok: true, url: videoUrl, platform };
@@ -4640,6 +4646,12 @@ ${sheet("Videos", [videoSheetHeaders, ...videoSheetRows])}
   async function renderClipperPage() { return renderClipperPageV240(); }
   async function renderAdminReports() { return renderAdminReportsV240(); }
   function renderClipperVideos() { return renderClipperVideosV240(); }
+
+  // Diagnóstico manual de recuperación. Úsalo desde la consola del navegador
+  // estando autenticado: await clipcontrolDebugFacebook("https://facebook.com/...")
+  window.clipcontrolDebugFacebook = (url) => invokeProcessor({ action:"facebook_diagnostic", url });
+  window.clipcontrolDebugYoutube = () => invokeProcessor({ action:"youtube_public_feed", limit:15 });
+  window.clipcontrolDebugHealth = () => invokeProcessor({ action:"health" });
 
   window.addEventListener("DOMContentLoaded", init);
 })();
