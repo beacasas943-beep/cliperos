@@ -1098,3 +1098,17 @@ body.theme-dark .btn-elaboration{background:#31250d!important;color:#ffd06c!impo
 @media(max-width:1000px){.clipper-action-strip-v234{grid-template-columns:1fr!important}.report-network-progress-v234{grid-template-columns:1fr 1fr!important;max-width:none!important}.report-actions-v234{justify-content:flex-start}.payment-network-list-v234>div{grid-template-columns:20px minmax(60px,.7fr) 1fr auto}}
 @media(max-width:620px){.creator-overview-v234{align-items:flex-start;flex-direction:column;padding:12px}.creator-overview-pay{text-align:left;width:100%;padding-top:9px;border-top:1px solid var(--cc22-border)}.creator-overview-pay strong{font-size:21px}.registered-platform-grid-v234{grid-template-columns:1fr!important}.clipper-action-strip-v234{display:grid!important}.auto-submit-card-v234{width:100%}.report-network-progress-v234{grid-template-columns:repeat(2,minmax(0,1fr))!important}.report-network-progress-v234 .report-network-pill small{max-width:70px}.report-actions-v234{display:grid;grid-template-columns:1fr 1fr;width:100%}.report-actions-v234 .btn{width:100%}.payment-network-list-v234>div{grid-template-columns:18px minmax(0,1fr) auto}.payment-network-list-v234>div>b{display:none}.page-heading h1{font-size:16px!important}.page-heading p{display:block!important;max-width:200px;font-size:7px!important}}
 .creator-photo-button{position:relative;border:0;background:transparent;padding:0;display:grid;place-items:center;cursor:pointer;border-radius:50%}.creator-photo-button>i{position:absolute;right:-2px;bottom:-1px;width:16px;height:16px;border-radius:50%;display:grid;place-items:center;background:#6c5cf4;color:#fff;border:2px solid var(--cc22-surface);font-style:normal;font-size:10px;font-weight:900}.creator-photo-button:hover .profile-avatar{transform:scale(1.04)}
+
+/* =====================================================================
+   CLIPCONTROL 2.4.3 · GLOBAL METRIC RESET BUTTON
+   ===================================================================== */
+.metric-reset-all-btn{
+  margin-right:auto;
+  border:1px solid rgba(220,38,38,.32);
+  box-shadow:0 8px 22px rgba(185,28,28,.14);
+}
+.metric-reset-all-btn:hover{filter:saturate(1.08)}
+.metric-reset-all-btn:disabled{cursor:wait;opacity:.72}
+@media(max-width:620px){
+  .metric-reset-all-btn{width:100%;margin-right:0;order:-1}
+}
