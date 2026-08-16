@@ -1,5 +1,5 @@
 (() => {
-  const CLIPCONTROL_FRONTEND_VERSION = "2.6.4-links-cache-proof";
+  const CLIPCONTROL_FRONTEND_VERSION = "2.6.5-link-validation-hard-fix";
   window.CLIPCONTROL_FRONTEND_VERSION = CLIPCONTROL_FRONTEND_VERSION;
   "use strict";
 
@@ -165,7 +165,7 @@
   }
 
   function videoUrlValidation(value, expectedPlatform = null) {
-    // 2.6.3: el frontend valida solo protocolo + dominio + plataforma elegida.
+    // 2.6.5: validacion deliberadamente amplia: protocolo + dominio + plataforma elegida.
     // No intentamos adivinar aquí todas las rutas válidas de cada red social:
     // Facebook/TikTok/YouTube cambian y generan enlaces cortos/de share con frecuencia.
     // La Edge Function es la responsable de resolver/redirigir y detectar el contenido.
@@ -4764,7 +4764,7 @@ ${sheet("Videos", [videoSheetHeaders, ...videoSheetRows])}
 
   window.clipcontrolDebugFrontend = () => ({
     version: CLIPCONTROL_FRONTEND_VERSION,
-    source: "app-v2.6.4.js",
+    source: "app.js?v=2.6.5.20260815",
     scripts: [...document.scripts].map((script) => script.src).filter(Boolean),
     samples: {
       facebook_reel: videoUrlValidation("https://www.facebook.com/reel/1579243183893033"),
@@ -4776,4 +4776,5 @@ ${sheet("Videos", [videoSheetHeaders, ...videoSheetRows])}
   });
 
 })();
+
 
