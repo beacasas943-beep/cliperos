@@ -1,5 +1,5 @@
 (() => {
-  const CLIPCONTROL_FRONTEND_VERSION = "2.6.3-link-validation";
+  const CLIPCONTROL_FRONTEND_VERSION = "2.6.4-links-cache-proof";
   window.CLIPCONTROL_FRONTEND_VERSION = CLIPCONTROL_FRONTEND_VERSION;
   "use strict";
 
@@ -4764,6 +4764,8 @@ ${sheet("Videos", [videoSheetHeaders, ...videoSheetRows])}
 
   window.clipcontrolDebugFrontend = () => ({
     version: CLIPCONTROL_FRONTEND_VERSION,
+    source: "app-v2.6.4.js",
+    scripts: [...document.scripts].map((script) => script.src).filter(Boolean),
     samples: {
       facebook_reel: videoUrlValidation("https://www.facebook.com/reel/1579243183893033"),
       facebook_share: videoUrlValidation("https://www.facebook.com/share/p/1Gt2mqMZu9/"),
@@ -4774,3 +4776,4 @@ ${sheet("Videos", [videoSheetHeaders, ...videoSheetRows])}
   });
 
 })();
+
