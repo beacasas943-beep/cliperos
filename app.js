@@ -1,6 +1,7 @@
 (() => {
-  const CLIPCONTROL_FRONTEND_VERSION = "2.6.6-tiktok-short-links-cache-fix";
+  const CLIPCONTROL_FRONTEND_VERSION = "3.0.1-segmented-report-export";
   window.CLIPCONTROL_FRONTEND_VERSION = CLIPCONTROL_FRONTEND_VERSION;
+  document.documentElement.dataset.clipcontrolUi = "3.0.1-admin-clean";
   "use strict";
 
   const PLATFORMS = {
@@ -496,23 +497,29 @@
       if (filters.account && filters.account !== "all" && video.account_id !== filters.account) return false;
       if (filters.platform && filters.platform !== "all" && video.platform !== filters.platform) return false;
       if (filters.status && filters.status !== "all" && metricBucket(video) !== filters.status) return false;
-      return !search || `${video.clipper_name} ${video.username} ${video.account_name} ${video.external_title || ""} ${video.video_url || ""}`.toLowerCase().includes(search);
+      return !search || `${video.clipper_name} ${video.username} ${video.account_name} ${video.external_title || ""} ${video.external_author || ""} ${video.video_url || ""} ${video.platform || ""} ${video.position || ""}`.toLowerCase().includes(search);
     });
   }
 
   function adminVideoCard(video, selectable = false) {
     const youtubeId = youtubeVideoIdFromUrl(video.video_url);
-    const thumb = video.thumbnail_url || (youtubeId ? `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg` : "");
-    const globalFallback = `<span class="global-video-media-fallback">${platformLogo(video.platform)}</span>`;
-    const mediaPreview = video.platform === "facebook"
-      ? facebookPreviewMarkup(video, "global-video-media-fallback")
-      : `${globalFallback}${thumb ? `<img src="${esc(thumb)}" alt="" loading="lazy" onerror="this.remove()">` : ""}`;
-    return `<article class="global-video-card metric-card-${metricBucket(video)}">
-      <div class="global-video-media">${mediaPreview}<span class="global-platform-chip">${platformLogo(video.platform)} ${esc(platformLabel(video.platform))}</span>${selectable ? `<label class="video-select-check"><input type="checkbox" data-metric-select="${video.id}" ${state.metricSelected?.has(video.id)?"checked":""}><span></span></label>` : ""}</div>
-      <div class="global-video-body"><div class="global-video-title"><strong>${esc(video.external_title || `Video ${video.position || ""}`)}</strong>${metricBucketBadge(video)}</div><p>${esc(video.clipper_name)} · @${esc(video.username)} · ${esc(video.account_name)}</p>
-      <div class="global-video-numbers"><span><b>${num(video.views)}</b><small>vistas</small></span><span><b>${num(video.likes)}</b><small>likes</small></span><span><b>${num(video.comments)}</b><small>coment.</small></span><span><b>${num(video.shares)}</b><small>comp.</small></span></div>
-      ${video.metrics_error ? `<div class="metric-error-copy" title="${esc(video.metrics_error)}">${uiIcon("alert",13)} ${esc(video.metrics_error)}</div>` : `<div class="metric-source-copy">${uiIcon("activity",13)} ${esc(metricAvailabilityLabel(video) || "Esperando lectura")}</div>`}
-      <div class="global-video-actions"><a class="btn btn-ghost btn-sm" href="${esc(video.video_url)}" target="_blank" rel="noopener">Abrir</a><button class="btn btn-secondary btn-sm" data-admin-report="${video.report_id}">Reporte ${uiIcon("arrow",13)}</button></div></div>
+    const rawThumb = video.thumbnail_url || (youtubeId ? `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg` : "");
+    const thumb = video.platform === "facebook" && facebookCdnThumbnailExpired(rawThumb) ? "" : rawThumb;
+    const fallback = `<span class="video-row-fallback">${platformLogo(video.platform)}</span>`;
+    const preview = thumb ? `<img src="${esc(thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.replaceWith(document.createRange().createContextualFragment('${fallback.replaceAll("'", "&#39;")}'))">` : fallback;
+    const checkbox = selectable ? `<label class="video-row-check"><input type="checkbox" data-metric-select="${video.id}" ${state.metricSelected?.has(video.id)?"checked":""}><span></span></label>` : "";
+    const title = video.external_title || `Video ${video.position || ""}`;
+    const urlLabel = String(video.video_url || "").replace(/^https?:\/\//i, "");
+    return `<article class="global-video-card global-video-row metric-card-${metricBucket(video)}" data-video-views="${Number(video.views||0)}">
+      ${checkbox}
+      <div class="video-row-thumb">${preview}<span class="video-row-platform">${platformLogo(video.platform)}</span></div>
+      <div class="video-row-main"><div class="video-row-title"><strong title="${esc(title)}">${esc(title)}</strong>${metricBucketBadge(video)}</div><p>${esc(video.clipper_name)} · @${esc(video.username)} · ${esc(video.account_name)}</p><a class="video-row-url" href="${esc(video.video_url)}" target="_blank" rel="noopener" title="${esc(video.video_url)}">${esc(urlLabel)}</a></div>
+      <div class="video-row-metric"><span>Vistas</span><b>${num(video.views)}</b></div>
+      <div class="video-row-metric"><span>Likes</span><b>${num(video.likes)}</b></div>
+      <div class="video-row-metric"><span>Coment.</span><b>${num(video.comments)}</b></div>
+      <div class="video-row-metric"><span>Comp.</span><b>${num(video.shares)}</b></div>
+      <div class="video-row-state">${video.metrics_error ? `<span class="video-row-warning" title="${esc(video.metrics_error)}">${uiIcon("alert",13)} ${esc(video.metrics_error)}</span>` : `<span class="video-row-source">${uiIcon("activity",13)} ${esc(metricAvailabilityLabel(video) || "Lectura disponible")}</span>`}</div>
+      <div class="video-row-actions"><a class="btn btn-ghost btn-sm" href="${esc(video.video_url)}" target="_blank" rel="noopener">Abrir</a><button class="btn btn-secondary btn-sm" data-admin-report="${video.report_id}">Reporte ${uiIcon("arrow",13)}</button></div>
     </article>`;
   }
 
@@ -521,26 +528,31 @@
   }
 
   async function renderAdminVideoCenter(force = false) {
-    setHeader("Centro de videos", "Todo el contenido en una sola vista");
+    setHeader("Centro de videos", "Busca, filtra y revisa por rendimiento");
     const data = await loadAdminVideoCenterData(null, force);
-    state.videoCenterFilters = state.videoCenterFilters || { search:"", clipper:"all", account:"all", platform:"all", status:"all" };
+    state.videoCenterFilters = state.videoCenterFilters || { search:"", clipper:"all", account:"all", platform:"all", status:"all", sort:"views_desc" };
     const filters = state.videoCenterFilters;
-    const visible = adminVideoFilterRows(data.videos, filters);
+    if (!filters.sort) filters.sort = "views_desc";
+    const sortVideos = (rows) => [...rows].sort((a,b) => {
+      if (filters.sort === "recent") return new Date(b.created_at||0) - new Date(a.created_at||0);
+      if (filters.sort === "oldest") return new Date(a.created_at||0) - new Date(b.created_at||0);
+      return Number(b.views||0) - Number(a.views||0) || Number(b.likes||0) - Number(a.likes||0);
+    });
+    const visible = sortVideos(adminVideoFilterRows(data.videos, filters));
     const uniqueClippers = [...new Map(data.videos.map(video => [video.user_id, { id:video.user_id, name:video.clipper_name, username:video.username }])).values()].sort((a,b)=>a.name.localeCompare(b.name,"es"));
     const availableAccounts = data.accounts.filter(account => filters.clipper === "all" || account.user_id === filters.clipper);
     const issues = data.videos.filter(video => metricBucket(video) !== "ok").length;
     const totalViews = data.videos.reduce((sum,video)=>sum+Number(video.views||0),0);
-    $("#content").innerHTML = `<section class="executive-head"><div><span class="section-eyebrow">BIBLIOTECA OPERATIVA</span><h2>${data.videos.length} videos bajo control</h2><p>${num(totalViews)} vistas detectadas en el período.</p></div><div class="executive-actions"><button id="goMetricInbox" class="btn btn-secondary">${uiIcon("alert",15)} ${issues} incidencias</button><button id="goPublicChannel" class="btn btn-primary">${uiIcon("video",15)} Canal público</button></div></section>
-      <section class="video-filter-shell"><div class="video-search-control">${uiIcon("activity",15)}<input id="globalVideoSearch" value="${esc(filters.search)}" placeholder="Buscar video, clipero o cuenta"></div><select id="globalClipperFilter"><option value="all">Todos los cliperos</option>${uniqueClippers.map(item=>`<option value="${item.id}" ${filters.clipper===item.id?"selected":""}>${esc(item.name)} · @${esc(item.username)}</option>`).join("")}</select><select id="globalAccountFilter"><option value="all">Todas las cuentas</option>${availableAccounts.map(account=>`<option value="${account.id}" ${filters.account===account.id?"selected":""}>${esc(account.account_name)} · ${esc(platformLabel(account.platform))}</option>`).join("")}</select><select id="globalPlatformFilter"><option value="all">Todas las redes</option>${Object.keys(PLATFORMS).map(platform=>`<option value="${platform}" ${filters.platform===platform?"selected":""}>${esc(platformLabel(platform))}</option>`).join("")}</select><select id="globalMetricFilter"><option value="all">Todos los estados</option>${["ok","partial","error","syncing","pending"].map(status=>`<option value="${status}" ${filters.status===status?"selected":""}>${metricBucketLabel(status)}</option>`).join("")}</select><button id="refreshVideoCenter" class="btn btn-ghost btn-sm btn-icon-only" title="Recargar">${uiIcon("sync",15)}</button></section>
-      <div class="filter-result-line"><span><b>${visible.length}</b> resultados</span>${Object.values(filters).some(value=>value&&value!=="all")?'<button id="clearVideoFilters" class="btn btn-ghost btn-sm">Limpiar filtros</button>':""}</div>
-      <section class="global-video-grid">${visible.map(video=>adminVideoCard(video)).join("") || '<div class="empty global-empty">No hay videos con estos filtros.</div>'}</section>`;
+    $("#content").innerHTML = `<section class="executive-head video-center-head"><div><span class="section-eyebrow">BIBLIOTECA OPERATIVA</span><h2>${data.videos.length} videos · ${num(totalViews)} vistas</h2><p>Ordenados por impacto para encontrar primero los videos más virales.</p></div><div class="executive-actions"><button id="goMetricInbox" class="btn btn-secondary">${uiIcon("alert",15)} ${issues} incidencias</button></div></section>
+      <section class="video-filter-shell video-filter-shell-v270"><div class="video-search-control">${uiIcon("activity",15)}<input id="globalVideoSearch" value="${esc(filters.search)}" placeholder="Buscar por título, link, clipero, cuenta o red"></div><select id="globalClipperFilter"><option value="all">Todos los cliperos</option>${uniqueClippers.map(item=>`<option value="${item.id}" ${filters.clipper===item.id?"selected":""}>${esc(item.name)} · @${esc(item.username)}</option>`).join("")}</select><select id="globalAccountFilter"><option value="all">Todas las cuentas</option>${availableAccounts.map(account=>`<option value="${account.id}" ${filters.account===account.id?"selected":""}>${esc(account.account_name)} · ${esc(platformLabel(account.platform))}</option>`).join("")}</select><select id="globalPlatformFilter"><option value="all">Todas las redes</option>${Object.keys(PLATFORMS).map(platform=>`<option value="${platform}" ${filters.platform===platform?"selected":""}>${esc(platformLabel(platform))}</option>`).join("")}</select><select id="globalMetricFilter"><option value="all">Todos los estados</option>${["ok","partial","error","syncing","pending"].map(status=>`<option value="${status}" ${filters.status===status?"selected":""}>${metricBucketLabel(status)}</option>`).join("")}</select><select id="globalSortFilter"><option value="views_desc" ${filters.sort==="views_desc"?"selected":""}>Más virales primero</option><option value="recent" ${filters.sort==="recent"?"selected":""}>Más recientes</option><option value="oldest" ${filters.sort==="oldest"?"selected":""}>Más antiguos</option></select><button id="refreshVideoCenter" class="btn btn-ghost btn-sm btn-icon-only" title="Recargar">${uiIcon("sync",15)}</button></section>
+      <div class="filter-result-line"><span><b>${visible.length}</b> resultados · orden ${filters.sort==="views_desc"?"viral":"cronológico"}</span>${Object.entries(filters).some(([key,value])=>key!=="sort"&&value&&value!=="all")?'<button id="clearVideoFilters" class="btn btn-ghost btn-sm">Limpiar filtros</button>':""}</div>
+      <section class="global-video-grid global-video-list">${visible.map(video=>adminVideoCard(video)).join("") || '<div class="empty global-empty">No hay videos con estos filtros.</div>'}</section>`;
     const rerender = () => renderAdminVideoCenter(false);
     $("#globalVideoSearch")?.addEventListener("input", debounce(event => { filters.search=event.target.value; rerender(); },250));
-    [["globalClipperFilter","clipper"],["globalAccountFilter","account"],["globalPlatformFilter","platform"],["globalMetricFilter","status"]].forEach(([id,key])=>$("#"+id)?.addEventListener("change",event=>{filters[key]=event.target.value;if(key==="clipper")filters.account="all";rerender();}));
-    $("#clearVideoFilters")?.addEventListener("click",()=>{state.videoCenterFilters={search:"",clipper:"all",account:"all",platform:"all",status:"all"};rerender();});
+    [["globalClipperFilter","clipper"],["globalAccountFilter","account"],["globalPlatformFilter","platform"],["globalMetricFilter","status"],["globalSortFilter","sort"]].forEach(([id,key])=>$("#"+id)?.addEventListener("change",event=>{filters[key]=event.target.value;if(key==="clipper")filters.account="all";rerender();}));
+    $("#clearVideoFilters")?.addEventListener("click",()=>{state.videoCenterFilters={search:"",clipper:"all",account:"all",platform:"all",status:"all",sort:"views_desc"};rerender();});
     $("#refreshVideoCenter")?.addEventListener("click",()=>renderAdminVideoCenter(true));
     $("#goMetricInbox")?.addEventListener("click",()=>navigate("metrics"));
-    $("#goPublicChannel")?.addEventListener("click",()=>navigate("channel"));
     bindAdminVideoCards();
   }
 
@@ -560,21 +572,23 @@
   }
 
   async function renderMetricInbox(force = false) {
-    setHeader("Bandeja de métricas", "Detecta, selecciona y reintenta");
+    setHeader("Bandeja de métricas", "Busca incidencias y reintenta solo lo necesario");
     const data = await loadAdminVideoCenterData(null, force);
     state.metricSelected = state.metricSelected || new Set();
-    state.metricFilters = state.metricFilters || { platform:"all", clipper:"all", status:"all" };
+    state.metricFilters = state.metricFilters || { search:"", platform:"all", clipper:"all", status:"all" };
+    if (state.metricFilters.search === undefined) state.metricFilters.search = "";
     const baseIssues = data.videos.filter(video => metricBucket(video) !== "ok");
-    const issues = adminVideoFilterRows(baseIssues, state.metricFilters);
+    const issues = adminVideoFilterRows(baseIssues, state.metricFilters).sort((a,b)=>Number(b.views||0)-Number(a.views||0)||Number(b.likes||0)-Number(a.likes||0));
     const errors = baseIssues.filter(video=>metricBucket(video)==="error").length;
     const partial = baseIssues.filter(video=>metricBucket(video)==="partial").length;
     const pending = baseIssues.filter(video=>["pending","syncing"].includes(metricBucket(video))).length;
     const clippers = [...new Map(baseIssues.map(video=>[video.user_id,{id:video.user_id,name:video.clipper_name}])).values()].sort((a,b)=>a.name.localeCompare(b.name,"es"));
-    $("#content").innerHTML = `<section class="metric-inbox-hero"><div><span class="section-eyebrow">CONTROL DE CALIDAD</span><h2>${baseIssues.length ? `${baseIssues.length} lecturas requieren atención` : "Métricas al día"}</h2><p>Los datos guardados nunca disminuyen por un fallo temporal.</p></div><div class="metric-inbox-counts"><span class="danger"><b>${errors}</b> errores</span><span class="warning"><b>${partial}</b> parciales</span><span class="neutral"><b>${pending}</b> pendientes</span></div></section>
-      <section class="metric-batch-bar"><div class="metric-batch-filters"><select id="metricPlatformFilter"><option value="all">Todas las redes</option>${Object.keys(PLATFORMS).map(platform=>`<option value="${platform}" ${state.metricFilters.platform===platform?"selected":""}>${platformLabel(platform)}</option>`).join("")}</select><select id="metricClipperFilter"><option value="all">Todos los cliperos</option>${clippers.map(item=>`<option value="${item.id}" ${state.metricFilters.clipper===item.id?"selected":""}>${esc(item.name)}</option>`).join("")}</select><select id="metricStatusFilter"><option value="all">Toda incidencia</option>${["error","partial","pending","syncing"].map(status=>`<option value="${status}" ${state.metricFilters.status===status?"selected":""}>${metricBucketLabel(status)}</option>`).join("")}</select></div><div class="metric-batch-actions"><button id="selectVisibleMetrics" class="btn btn-ghost btn-sm">Seleccionar visibles</button><button id="retrySelectedMetrics" class="btn btn-primary btn-sm">${uiIcon("sync",14)} Reintentar seleccionados</button></div></section>
+    $("#content").innerHTML = `<section class="metric-inbox-hero"><div><span class="section-eyebrow">CONTROL DE CALIDAD</span><h2>${baseIssues.length ? `${baseIssues.length} lecturas requieren atención` : "Métricas al día"}</h2><p>Vista en filas para revisar rápido título, enlace, métricas y estado.</p></div><div class="metric-inbox-counts"><span class="danger"><b>${errors}</b> errores</span><span class="warning"><b>${partial}</b> parciales</span><span class="neutral"><b>${pending}</b> pendientes</span></div></section>
+      <section class="metric-batch-bar metric-batch-bar-v270"><div class="metric-search-control video-search-control">${uiIcon("activity",14)}<input id="metricSearchInput" value="${esc(state.metricFilters.search)}" placeholder="Buscar por título, link, clipero o cuenta"></div><div class="metric-batch-filters"><select id="metricPlatformFilter"><option value="all">Todas las redes</option>${Object.keys(PLATFORMS).map(platform=>`<option value="${platform}" ${state.metricFilters.platform===platform?"selected":""}>${platformLabel(platform)}</option>`).join("")}</select><select id="metricClipperFilter"><option value="all">Todos los cliperos</option>${clippers.map(item=>`<option value="${item.id}" ${state.metricFilters.clipper===item.id?"selected":""}>${esc(item.name)}</option>`).join("")}</select><select id="metricStatusFilter"><option value="all">Toda incidencia</option>${["error","partial","pending","syncing"].map(status=>`<option value="${status}" ${state.metricFilters.status===status?"selected":""}>${metricBucketLabel(status)}</option>`).join("")}</select></div><div class="metric-batch-actions"><button id="selectVisibleMetrics" class="btn btn-ghost btn-sm">Seleccionar visibles</button><button id="retrySelectedMetrics" class="btn btn-primary btn-sm">${uiIcon("sync",14)} Reintentar seleccionados</button></div></section>
       <div class="filter-result-line"><span><b>${issues.length}</b> incidencias visibles · <b id="metricSelectedCount">${state.metricSelected.size}</b> seleccionadas</span><button id="retryAllIssues" class="btn btn-secondary btn-sm">Reintentar visibles</button></div>
-      <section class="global-video-grid metric-inbox-grid">${issues.map(video=>adminVideoCard(video,true)).join("") || `<div class="metric-clean-state"><span>${uiIcon("check",30)}</span><h3>Todo limpio</h3><p>No hay incidencias con estos filtros.</p></div>`}</section>`;
+      <section class="global-video-grid global-video-list metric-inbox-grid">${issues.map(video=>adminVideoCard(video,true)).join("") || `<div class="metric-clean-state"><span>${uiIcon("check",30)}</span><h3>Todo limpio</h3><p>No hay incidencias con estos filtros.</p></div>`}</section>`;
     const rerender=()=>renderMetricInbox(false);
+    $("#metricSearchInput")?.addEventListener("input",debounce(event=>{state.metricFilters.search=event.target.value;rerender();},250));
     [["metricPlatformFilter","platform"],["metricClipperFilter","clipper"],["metricStatusFilter","status"]].forEach(([id,key])=>$("#"+id)?.addEventListener("change",event=>{state.metricFilters[key]=event.target.value;rerender();}));
     $$('[data-metric-select]').forEach(input=>input.addEventListener("change",()=>{input.checked?state.metricSelected.add(input.dataset.metricSelect):state.metricSelected.delete(input.dataset.metricSelect);$("#metricSelectedCount").textContent=state.metricSelected.size;}));
     $("#selectVisibleMetrics")?.addEventListener("click",()=>{issues.forEach(video=>state.metricSelected.add(video.id));rerender();});
@@ -669,15 +683,9 @@
   }
 
   function periodIntelligenceMarkup(data) {
-    const topVideos=[...data.videos].sort((a,b)=>Number(b.views||0)-Number(a.views||0)).slice(0,3);
-    const accountStats=new Map(data.accounts.filter(account=>account.active!==false).map(account=>[account.id,{...account,videos:0,views:0}]));
-    data.videos.forEach(video=>{const row=accountStats.get(video.account_id);if(row){row.videos+=1;row.views+=Number(video.views||0);}});
-    const weak=[...accountStats.values()].sort((a,b)=>a.views-b.views||a.videos-b.videos).slice(0,3);
-    const pending=data.reports.filter(report=>!["paid","closed","expired"].includes(report.status)&&reportDisplayTotal(report)>0).sort((a,b)=>reportDisplayTotal(b)-reportDisplayTotal(a)).slice(0,3);
-    const topMarkup=topVideos.map((video,index)=>`<button class="intel-list-row" data-admin-report="${video.report_id}"><span class="intel-rank">${index+1}</span><span><b>${esc(video.external_title||video.clipper_name)}</b><small>${esc(video.clipper_name)} · ${esc(video.account_name)}</small></span><strong>${num(video.views)}</strong></button>`).join("")||'<div class="intel-empty">Aún sin videos.</div>';
-    const weakMarkup=weak.map(account=>`<div class="intel-list-row"><span class="intel-dot warning"></span><span><b>${esc(account.account_name||"Cuenta")}</b><small>${esc(platformLabel(account.platform))} · ${account.videos} videos</small></span><strong>${num(account.views)}</strong></div>`).join("")||'<div class="intel-empty">Sin cuentas flojas.</div>';
-    const pendingMarkup=pending.map(report=>`<button class="intel-list-row" data-admin-report="${report.report_id}"><span class="intel-dot danger"></span><span><b>${esc(`${report.names||""} ${report.surnames||""}`.trim()||report.username)}</b><small>${report.payment_account?paymentMethodLabel(report.payment_method):"Falta cuenta de pago"}</small></span><strong>${money(reportDisplayTotal(report))}</strong></button>`).join("")||'<div class="intel-empty">No hay pagos pendientes.</div>';
-    return `<section class="period-intelligence"><article class="intelligence-card intel-top"><div class="intelligence-head"><div><span>TOP</span><h3>Videos líderes</h3></div>${uiIcon("activity",18)}</div>${topMarkup}</article><article class="intelligence-card intel-weak"><div class="intelligence-head"><div><span>ATENCIÓN</span><h3>Cuentas flojas</h3></div>${uiIcon("alert",18)}</div>${weakMarkup}</article><article class="intelligence-card intel-pay"><div class="intelligence-head"><div><span>PAGOS</span><h3>Pendientes</h3></div>${uiIcon("wallet",18)}</div>${pendingMarkup}</article></section>`;
+    const topVideos=[...data.videos].sort((a,b)=>Number(b.views||0)-Number(a.views||0)||Number(b.likes||0)-Number(a.likes||0)).slice(0,5);
+    const topMarkup=topVideos.map((video,index)=>`<a class="intel-list-row intel-video-link" href="${esc(video.video_url)}" target="_blank" rel="noopener" title="Abrir video"><span class="intel-rank">${index+1}</span><span><b>${esc(video.external_title||video.clipper_name)}</b><small>${esc(video.clipper_name)} · ${esc(video.account_name)} · ${esc(platformLabel(video.platform))}</small></span><strong>${num(video.views)} vistas ${uiIcon("arrow",12)}</strong></a>`).join("")||'<div class="intel-empty">Aún sin videos.</div>';
+    return `<section class="period-intelligence period-intelligence-focus"><article class="intelligence-card intel-top intel-top-wide"><div class="intelligence-head"><div><span>TOP DEL PERÍODO</span><h3>Videos líderes</h3></div><small class="intel-help">Toca un video para abrirlo ${uiIcon("arrow",13)}</small></div>${topMarkup}</article></section>`;
   }
 
   async function renderAdminReportsV240() {
@@ -701,22 +709,15 @@
       if(account.active!==false&&!state.adminRegisteredPlatformsByUser[account.user_id].includes(account.platform))state.adminRegisteredPlatformsByUser[account.user_id].push(account.platform);
     }
     const aggregate=aggregatePlatformRows(platformRows||[]);
-    const pendingReview=reports.filter(report=>["sent","review","observed"].includes(report.status)).length;
     const projected=reports.reduce((sum,report)=>sum+reportDisplayTotal(report),0);
-    const metricIssues=data.videos.filter(video=>metricBucket(video)!=="ok").length;
     const pendingPayments=reports.filter(report=>!["paid","closed","expired"].includes(report.status)&&reportDisplayTotal(report)>0).length;
     const selectedPeriod=periods.find(period=>period.start_date===state.adminWeek);
     const totalViews=data.videos.reduce((sum,video)=>sum+Number(video.views||0),0);
-    $("#content").innerHTML=`<section class="admin-command-hero"><div><span class="reports-kicker">PERÍODO ${selectedPeriod?.is_active?"EN VIVO":"HISTÓRICO"}</span><h2>${esc(selectedPeriod?.name||periodRangeLabel(selectedPeriod)||state.adminWeek)}</h2><p>${reports.length} cliperos · ${data.videos.length} videos · ${num(totalViews)} vistas</p></div><div class="admin-command-value"><small>Pago proyectado</small><strong>${money(projected)}</strong><span>${pendingPayments} pagos pendientes</span></div></section>
-      <section class="admin-command-actions"><label class="period-select-v224">${uiIcon("history",15)}<select id="reportPeriodSelect">${periods.map(period=>`<option value="${period.start_date}" ${period.start_date===state.adminWeek?"selected":""}>${esc(period.name||periodRangeLabel(period))}${period.is_active?" · ACTIVO":""}</option>`).join("")}</select></label><button id="goAdminVideos" class="command-action">${uiIcon("video",16)}<span>Videos<small>${data.videos.length} totales</small></span></button><button id="goAdminMetrics" class="command-action ${metricIssues?"has-alert":""}">${uiIcon("alert",16)}<span>Métricas<small>${metricIssues} incidencias</small></span></button><button id="goAdminChannel" class="command-action">${uiIcon("network",16)}<span>Canal<small>Videos y lives</small></span></button><button id="exportReportsBtn" class="command-action">${uiIcon("report",16)}<span>Excel<small>Exportar período</small></span></button></section>
-      <div class="executive-kpi-grid"><article><span>Reportes</span><b>${reports.length}</b><small>${pendingReview} por revisar</small></article><article><span>Métricas</span><b>${data.videos.length-metricIssues}/${data.videos.length}</b><small>lecturas limpias</small></article><article><span>Pagos pendientes</span><b>${pendingPayments}</b><small>${money(projected)} proyectado</small></article><article><span>Cierre</span><b>${dateOnlyLabel(selectedPeriod?.end_date||reports[0]?.week_end)}</b><small>${selectedPeriod?.is_active?"período activo":"período cerrado"}</small></article></div>
+    $("#content").innerHTML=`<section class="admin-command-hero admin-command-hero-clean"><div><span class="reports-kicker">PERÍODO ${selectedPeriod?.is_active?"EN VIVO":"HISTÓRICO"}</span><h2>${esc(selectedPeriod?.name||periodRangeLabel(selectedPeriod)||state.adminWeek)}</h2><p>${reports.length} cliperos · ${data.videos.length} videos · ${num(totalViews)} vistas</p></div><div class="admin-command-value"><small>Pago proyectado</small><strong>${money(projected)}</strong><span>${pendingPayments} pagos pendientes</span></div></section>
+      <section class="dashboard-period-only"><label class="period-select-v224">${uiIcon("history",15)}<select id="reportPeriodSelect">${periods.map(period=>`<option value="${period.start_date}" ${period.start_date===state.adminWeek?"selected":""}>${esc(period.name||periodRangeLabel(period))}${period.is_active?" · ACTIVO":""}</option>`).join("")}</select></label><small>Selecciona el período que quieres revisar.</small></section>
       ${livePlatformCards(aggregate,{})}${periodIntelligenceMarkup(data)}
       <section class="card report-list-card-v224 executive-report-list"><div class="report-list-head-v224"><div><span class="section-eyebrow">OPERACIÓN</span><h2>Evaluar cliperos</h2><p>Avance y pago separados por red.</p></div><span class="report-live-note"><i></i> En vivo</span></div>${adminReportsTable(reports)}</section>`;
     $("#reportPeriodSelect")?.addEventListener("change",event=>{state.adminWeek=event.target.value;state.adminVideoData=null;renderAdminReportsV240();});
-    $("#goAdminVideos")?.addEventListener("click",()=>navigate("videos"));
-    $("#goAdminMetrics")?.addEventListener("click",()=>navigate("metrics"));
-    $("#goAdminChannel")?.addEventListener("click",()=>navigate("channel"));
-    $("#exportReportsBtn")?.addEventListener("click",()=>exportWeeklyExcel(reports));
     bindAdminReportButtons();
     bindAdminVideoCards();
     animateDynamicNumbers($("#content"));
@@ -2709,7 +2710,7 @@
 
 
 
-  function renderAdminRulesTab(profile, rules) {
+  function renderAdminRulesTabV280Base(profile, rules) {
     const box = $("#clipperTabContent");
     box.innerHTML = `<div class="alert alert-info compact-alert" style="margin-bottom:12px"><div>⚙</div><div><strong>Preferencias individuales</strong><p>El pago se configura por plataforma en Configuración → Pago por red.</p></div></div><form id="rulesForm" class="form-grid compact-form"><label>Filas iniciales sugeridas<input name="slots_override" type="number" min="1" max="100" value="${rules?.slots_override ?? ""}" placeholder="Usar general"><small>No limita la cantidad de videos.</small></label><label>Edición fuera de plazo<select name="allow_late_edit"><option value="">Usar general</option><option value="true" ${rules?.allow_late_edit === true ? "selected" : ""}>Permitir</option><option value="false" ${rules?.allow_late_edit === false ? "selected" : ""}>No permitir</option></select></label><label>Puede enviar reporte<select name="can_submit"><option value="">Usar general</option><option value="true" ${rules?.can_submit === true ? "selected" : ""}>Sí</option><option value="false" ${rules?.can_submit === false ? "selected" : ""}>No</option></select></label><label class="full">Nota administrativa<textarea name="admin_notes" rows="2">${esc(rules?.admin_notes || "")}</textarea></label><div class="full actions"><button class="btn btn-primary">Guardar preferencias</button><button type="button" id="resetRules" class="btn btn-ghost">Restablecer</button></div></form>`;
     $("#rulesForm").addEventListener("submit", async (event) => {
@@ -3114,7 +3115,7 @@
 
   function checkBox(name,checked,title,description){return `<label class="setting-switch"><input name="${name}" type="checkbox" ${checked?"checked":""}><div><b>${title}</b><span>${description}</span></div></label>`;}
 
-  async function renderAdminSettings() {
+  async function renderAdminSettingsV280Base() {
     setHeader("Configuración","Períodos, pagos, métricas, usuarios y apariencia.");
     const [settings,rules,periods]=await Promise.all([
       query(state.supabase.from("app_settings").select("*").eq("id",1).single()),
@@ -4497,9 +4498,9 @@
       const rowMap=Object.fromEntries((platforms||[]).map(row=>[row.platform,row]));
       const registered=[...new Set(accounts.filter(a=>a.active).map(a=>a.platform).concat((platforms||[]).filter(r=>Number(r.video_count||0)>0).map(r=>r.platform)))];
       const normalized=registered.map(platform=>normalizedPlatformRow(platform,rowMap[platform]));
-      const basePay=Math.round(normalized.reduce((sum,row)=>sum+uncappedPlatformPay(row),0)*100)/100;
+      const accountPayRowsV280=await fetchAccountPaymentsV280(reportId); const basePay=accountPayRowsV280.length?Math.round(accountPayRowsV280.reduce((sum,row)=>sum+Number(row.final_pay||0),0)*100)/100:Math.round(normalized.reduce((sum,row)=>sum+uncappedPlatformPay(row),0)*100)/100;
       const cards=`<div class="report-platform-grid report-platform-grid-v234">${normalized.map(row=>{const raw=row.pay_enabled?platformProgressRaw(row):0;return `<div class="report-platform-card report-platform-card-v234">${platformBadge(row.platform,true)}<strong>${num(row.views)}</strong><small>${row.video_count} videos · ${row.pay_enabled?`${Math.round(raw)}% de referencia`:"solo métricas"}</small><div class="report-pay"><span>${row.pay_enabled?`${money(row.max_base_pay)} / ${num(row.target_views)} vistas`:"No remunerado"}</span><b>${row.pay_enabled?money(uncappedPlatformPay(row)):"—"}</b></div></div>`;}).join("")}</div>`;
-      openModal(`<div class="modal-head sticky-modal-head"><div><h2>${esc(summary.names||summary.username)} ${esc(summary.surnames||"")}</h2><p>${periodRangeLabel(summary)} · @${esc(summary.username)}</p></div><div class="actions">${statusBadge(summary.status)}<button id="adminReportX" class="modal-close">×</button></div></div><div class="admin-action-bar"><div class="action-summary"><span><small>Videos</small><b>${summary.video_count}</b></span><span><small>Pago por vistas</small><b>${money(basePay)}</b></span><span><small>Bono adicional</small><b>${money(summary.bonus_pay||0)}</b></span></div><div class="actions"><button data-review-action="draft" class="btn btn-elaboration btn-sm" ${summary.status==="draft"||["paid","closed","expired"].includes(summary.status)?"disabled":""}>↩ Seguir en elaboración</button><button data-review-action="review" class="btn btn-secondary btn-sm">Revisión</button><button data-review-action="observe" class="btn btn-warning btn-sm">Observar</button><button data-review-action="approve" class="btn btn-success btn-sm">Aprobar</button><button data-review-action="paid" class="btn btn-dark btn-sm">Pagado</button></div></div><div class="modal-body compact-modal-body">${cards}<div class="formula-box formula-box-v234"><b>Pago sin techo</b><span>Cada red: vistas ÷ meta de referencia × pago de referencia. Superar la meta sigue aumentando el pago.</span></div><div class="payment-request-box"><h3>💳 Datos de pago</h3><p>${summary.payment_account?`${paymentMethodLabel(summary.payment_method)} · ${esc(summary.payment_holder||summary.names||"")} · ${esc(summary.payment_account)}`:"Aún no registrados."}</p></div><div class="review-options" style="margin-top:12px"><label>Bono adicional<input id="bonusPayInput" type="number" min="0" step="0.01" value="${summary.bonus_pay??0}"><small class="muted">Este bono es aparte del pago automático por vistas.</small></label><label>Número de operación<input id="transactionInput" value="${esc(summary.transaction_number||"")}" placeholder="Opcional"></label><label class="full">Nota / observación<textarea id="reviewNote" rows="2">${esc(summary.admin_note||"")}</textarea></label></div><div class="card-head" style="margin-top:14px"><div><h3>Videos</h3><p>Detalle de enlaces y métricas.</p></div><button id="syncReportNow" class="btn btn-secondary btn-sm">↻ Actualizar métricas</button></div>${videosTable(videos,accounts,true)}${observations.length?`<div class="divider"></div><h3>Observaciones</h3>${observations.map(o=>`<div class="alert ${o.resolved?"alert-info":"alert-danger"} compact-alert"><div>📝</div><div><strong>${o.resolved?"Resuelta":"Pendiente"}</strong><p>${esc(o.message)} · ${dateTimeLabel(o.created_at)}</p></div></div>`).join("")}`:""}</div><div class="modal-foot"><span class="small muted">Última métrica: ${dateTimeLabel(summary.metrics_last_checked_at)}</span><button id="adminReportClose" class="btn btn-ghost">Cerrar</button></div>`,"",layer=>{
+      openModal(`<div class="modal-head sticky-modal-head"><div><h2>${esc(summary.names||summary.username)} ${esc(summary.surnames||"")}</h2><p>${periodRangeLabel(summary)} · @${esc(summary.username)}</p></div><div class="actions">${statusBadge(summary.status)}<button id="adminReportX" class="modal-close">×</button></div></div><div class="admin-action-bar"><div class="action-summary"><span><small>Videos</small><b>${summary.video_count}</b></span><span><small>Pago por vistas</small><b>${money(basePay)}</b></span><span><small>Bono adicional</small><b>${money(summary.bonus_pay||0)}</b></span></div><div class="actions"><button data-review-action="draft" class="btn btn-elaboration btn-sm" ${summary.status==="draft"||["paid","closed","expired"].includes(summary.status)?"disabled":""}>↩ Seguir en elaboración</button><button data-review-action="review" class="btn btn-secondary btn-sm">Revisión</button><button data-review-action="observe" class="btn btn-warning btn-sm">Observar</button><button data-review-action="approve" class="btn btn-success btn-sm">Aprobar</button><button data-review-action="paid" class="btn btn-dark btn-sm">Pagado</button></div></div><div class="modal-body compact-modal-body">${adminAccountPaymentBreakdownV280(accountPayRowsV280)}${cards}${paymentFormulaNoteV280(accountPayRowsV280)}<div class="payment-request-box"><h3>💳 Datos de pago</h3><p>${summary.payment_account?`${paymentMethodLabel(summary.payment_method)} · ${esc(summary.payment_holder||summary.names||"")} · ${esc(summary.payment_account)}`:"Aún no registrados."}</p></div><div class="review-options" style="margin-top:12px"><label>Bono adicional<input id="bonusPayInput" type="number" min="0" step="0.01" value="${summary.bonus_pay??0}"><small class="muted">Este bono es aparte del pago automático por vistas.</small></label><label>Número de operación<input id="transactionInput" value="${esc(summary.transaction_number||"")}" placeholder="Opcional"></label><label class="full">Nota / observación<textarea id="reviewNote" rows="2">${esc(summary.admin_note||"")}</textarea></label></div><div class="card-head" style="margin-top:14px"><div><h3>Videos</h3><p>Detalle de enlaces y métricas.</p></div><button id="syncReportNow" class="btn btn-secondary btn-sm">↻ Actualizar métricas</button></div>${videosTable(videos,accounts,true)}${observations.length?`<div class="divider"></div><h3>Observaciones</h3>${observations.map(o=>`<div class="alert ${o.resolved?"alert-info":"alert-danger"} compact-alert"><div>📝</div><div><strong>${o.resolved?"Resuelta":"Pendiente"}</strong><p>${esc(o.message)} · ${dateTimeLabel(o.created_at)}</p></div></div>`).join("")}`:""}</div><div class="modal-foot"><span class="small muted">Última métrica: ${dateTimeLabel(summary.metrics_last_checked_at)}</span><button id="adminReportClose" class="btn btn-ghost">Cerrar</button></div>`,"",layer=>{
         $("#adminReportX",layer).addEventListener("click",closeModal); $("#adminReportClose",layer).addEventListener("click",closeModal);
         $("#syncReportNow",layer).addEventListener("click",async()=>{$("#syncReportNow",layer).disabled=true;await syncReportMetrics(reportId);closeModal();await openAdminReportDetail(reportId);});
         $$('[data-edit-video]',layer).forEach(b=>b.addEventListener("click",()=>openEditVideoModal(b.dataset.editVideo,true)));
@@ -4508,13 +4509,13 @@
         $$('[data-review-action]',layer).forEach(button=>button.addEventListener("click",async()=>{
           const action=button.dataset.reviewAction,note=$("#reviewNote",layer).value.trim(),bonus=Number($("#bonusPayInput",layer).value||0),transaction=$("#transactionInput",layer).value.trim();
           if(action==="observe"&&!note)return toast("Escribe el motivo de la observación.","error");
-          const confirmText=action==="draft"?"¿Devolver este reporte a En elaboración?":"¿Guardar esta evaluación con el pago proporcional sin techo?";
+          const confirmText=action==="draft"?"¿Devolver este reporte a En elaboración?":"¿Guardar esta evaluación con el pago calculado?";
           if(!confirm(confirmText))return; showLoading(true);
           try {
             if(action==="draft") await query(state.supabase.rpc("admin_return_report_to_draft",{p_report_id:reportId,p_note:note||null}));
             else {
               if(["approve","paid"].includes(action)) await syncReportMetrics(reportId,true);
-              await query(state.supabase.rpc("admin_quick_review_report_v234",{p_report_id:reportId,p_action:action,p_bonus_pay:bonus,p_note:note||null,p_transaction_number:transaction||null}));
+              await adminQuickReviewV280({p_report_id:reportId,p_action:action,p_bonus_pay:bonus,p_note:note||null,p_transaction_number:transaction||null});
             }
             closeModal(); toast(action==="draft"?"Reporte devuelto a En elaboración":"Evaluación guardada","success"); await renderPage(true);
           } catch(error){toast(errorMessage(error),"error");} finally{showLoading(false);}
@@ -4526,167 +4527,400 @@
   async function renderAdminPayments() {
     setHeader("Pagos","Pago proporcional por vistas, separado por plataforma.");
     const start=state.activePeriod?.start_date||currentWeekStartISO();
-    const reports=await query(state.supabase.from("weekly_report_summary").select("*").eq("week_start",start).order("names"));
+    const reportsRaw=await query(state.supabase.from("weekly_report_summary").select("*").eq("week_start",start).order("names"));
+    const reports=[...(reportsRaw||[])].sort((a,b)=>{
+      const an=`${a.names||""} ${a.surnames||""}`.trim()||a.username||"";
+      const bn=`${b.names||""} ${b.surnames||""}`.trim()||b.username||"";
+      return an.localeCompare(bn,"es",{sensitivity:"base"});
+    });
     const ids=reports.map(r=>r.report_id);
     const platformRows=ids.length?await query(state.supabase.from("weekly_report_platform_summary").select("*").in("report_id",ids)):[];
     state.adminPlatformRows=platformRows;
     const total=reports.reduce((sum,r)=>sum+reportDisplayTotal(r),0),paid=reports.filter(r=>r.status==="paid"),missing=reports.filter(r=>!r.payment_account);
-    $("#content").innerHTML=`<div class="grid grid3 compact-kpis mobile-two-columns">${kpi("Pago proyectado",money(total),"Sin techo por vistas")}${kpi("Pagados",paid.length,`${reports.length-paid.length} pendientes`)}${kpi("Sin datos de pago",missing.length,"Solicitar desde Accesos")}</div><div class="card compact-card" style="margin-top:12px"><div class="card-head"><div><h2>Pagos del período</h2><p>Cada red se calcula de forma independiente.</p></div></div><div class="payment-grid payment-grid-v234">${reports.map(r=>{const rows=platformRowsForReport(r.report_id).filter(row=>row.pay_enabled!==false);const base=reportUncappedBase(r);return `<div class="payment-card payment-card-v234"><div class="payment-card-head"><div><strong>${esc(r.names||r.username)} ${esc(r.surnames||"")}</strong><small>@${esc(r.username)}</small></div>${statusBadge(r.status)}</div><div class="payment-network-list-v234">${rows.map(row=>`<div>${platformLogo(row.platform)}<span>${platformLabel(row.platform)}</span><b>${num(row.views)} vistas</b><strong>${money(uncappedPlatformPay(row))}</strong></div>`).join("")||'<small class="muted">Sin redes remuneradas</small>'}</div><div class="payment-breakdown"><div><span>Por vistas</span><b>${money(base)}</b></div><div><span>Bono extra</span><b>${money(r.bonus_pay||0)}</b></div><div><span>Total</span><b>${money(reportDisplayTotal(r))}</b></div></div><div class="payment-account-row"><div><span>${paymentMethodLabel(r.payment_method)}</span><b>${r.payment_account?esc(r.payment_account):"Pendiente"}</b></div><div class="actions">${r.payment_account?`<button class="btn btn-ghost btn-sm" data-copy-pay="${esc(r.payment_account)}">Copiar</button>`:""}<button class="btn btn-secondary btn-sm" data-admin-report="${r.report_id}">Evaluar</button></div></div></div>`;}).join("")||'<div class="empty">Todavía no hay reportes.</div>'}</div></div>`;
+    $("#content").innerHTML=`<div class="grid grid3 compact-kpis mobile-two-columns payment-kpis-v270">${kpi("Pago proyectado",money(total),"Sin techo por vistas")}${kpi("Pagados",paid.length,`${reports.length-paid.length} pendientes`)}${kpi("Sin datos de pago",missing.length,"Solicitar desde Accesos")}</div><div class="card compact-card payment-shell-v270" style="margin-top:12px"><div class="card-head"><div><h2>Pagos del período</h2><p>${reports.length} cliperos · orden alfabético.</p></div></div><div class="payment-grid payment-grid-v234 payment-grid-v270">${reports.map(r=>{const rows=platformRowsForReport(r.report_id).filter(row=>row.pay_enabled!==false);const base=reportUncappedBase(r);return `<div class="payment-card payment-card-v234 payment-card-v270"><div class="payment-card-head"><div><strong>${esc(`${r.names||r.username||""} ${r.surnames||""}`.trim())}</strong><small>@${esc(r.username)}</small></div>${statusBadge(r.status)}</div><div class="payment-network-list-v234 payment-network-list-v270">${rows.map(row=>`<div>${platformLogo(row.platform)}<span>${platformLabel(row.platform)}</span><b>${num(row.views)} vistas</b><strong>${money(uncappedPlatformPay(row))}</strong></div>`).join("")||'<small class="muted">Sin redes remuneradas</small>'}</div><div class="payment-breakdown payment-breakdown-v270"><div><span>Vistas</span><b>${money(base)}</b></div><div><span>Bono</span><b>${money(r.bonus_pay||0)}</b></div><div><span>Total</span><b>${money(reportDisplayTotal(r))}</b></div></div><div class="payment-account-row payment-account-row-v270"><div><span>${paymentMethodLabel(r.payment_method)}</span><b>${r.payment_account?esc(r.payment_account):"Pendiente"}</b></div><div class="actions">${r.payment_account?`<button class="btn btn-ghost btn-sm" data-copy-pay="${esc(r.payment_account)}">Copiar</button>`:""}<button class="btn btn-secondary btn-sm" data-admin-report="${r.report_id}">Evaluar</button></div></div></div>`;}).join("")||'<div class="empty">Todavía no hay reportes.</div>'}</div></div>`;
     $$('[data-copy-pay]').forEach(b=>b.addEventListener("click",()=>copyText(b.dataset.copyPay))); bindAdminReportButtons();
   }
 
   async function exportWeeklyExcel(reports) {
-    let platformRows = state.adminPlatformRows || [];
-    const reportIds = (reports||[]).map(r=>r.report_id);
-    const userIds = [...new Set((reports||[]).map(r=>r.user_id).filter(Boolean))];
-    if (reportIds.length && !platformRows.some(row=>reportIds.includes(row.report_id))) {
-      platformRows = await query(state.supabase.from("weekly_report_platform_summary").select("*").in("report_id",reportIds));
-    }
-    const [videoRows,socialAccounts] = await Promise.all([
-      reportIds.length ? query(state.supabase.from("videos").select("id,report_id,user_id,platform,account_id,position,video_url,views,likes,comments,shares,external_title,metrics_status,created_at").in("report_id",reportIds).is("deleted_at",null).order("position")) : Promise.resolve([]),
-      userIds.length ? query(state.supabase.from("social_accounts").select("id,user_id,platform,account_name,channel_url,active").in("user_id",userIds)) : Promise.resolve([]),
-    ]);
-    const byReport={}; for(const row of platformRows){if(!byReport[row.report_id])byReport[row.report_id]={};byReport[row.report_id][row.platform]=row;}
-    const accountMap = Object.fromEntries((socialAccounts || []).map(account => [account.id, account]));
-    const reportMap = Object.fromEntries((reports || []).map(report => [report.report_id, report]));
-    const safeXml=value=>String(value??"")
-      .replaceAll("&","&amp;")
-      .replaceAll("<","&lt;")
-      .replaceAll(">","&gt;")
-      .replaceAll('"',"&quot;")
-      .replaceAll("'","&apos;");
-    const cell=(value,type=null)=>{
-      const resolvedType = type || (typeof value==="number" && Number.isFinite(value) ? "Number" : "String");
-      const cellValue = resolvedType === "Number" ? Number(value || 0) : safeXml(value);
-      return `<Cell><Data ss:Type="${resolvedType}">${cellValue}</Data></Cell>`;
-    };
-    const rowXml=(cells)=>`<Row>${cells.map(item=>Array.isArray(item)?cell(item[0],item[1]):cell(item)).join("")}</Row>`;
-    const sheet=(name,rows)=>`<Worksheet ss:Name="${safeXml(name)}"><Table>${rows.map(rowXml).join("")}</Table></Worksheet>`;
+    showLoading(true);
+    try {
+      let platformRows = state.adminPlatformRows || [];
+      const reportIds = (reports || []).map((report) => report.report_id).filter(Boolean);
+      const userIds = [...new Set((reports || []).map((report) => report.user_id).filter(Boolean))];
 
-    const detailHeaders=["Usuario","Clipero","Método pago","Cuenta pago","Titular","Videos","TikTok vistas","TikTok pago","Instagram vistas","Instagram pago","YouTube vistas","YouTube pago","Facebook vistas","Facebook pago","Pago por vistas","Bono adicional","Pago total","Estado","Cierre"];
-    const detailRows=(reports||[]).map(r=>{
-      const p=byReport[r.report_id]||{};
-      const base=Math.round(Object.values(p).reduce((sum,row)=>sum+uncappedPlatformPay(row),0)*100)/100;
-      const bonus=Number(r.bonus_pay||0);
-      return [
-        r.username||"",
-        `${r.names||""} ${r.surnames||""}`.trim(),
-        paymentMethodLabel(r.payment_method),
-        r.payment_account || "",
-        r.payment_holder || "",
-        Number(r.video_count||0),
-        Number(p.tiktok?.views||0),
-        uncappedPlatformPay(p.tiktok),
-        Number(p.instagram?.views||0),
-        uncappedPlatformPay(p.instagram),
-        Number(p.youtube?.views||0),
-        uncappedPlatformPay(p.youtube),
-        Number(p.facebook?.views||0),
-        uncappedPlatformPay(p.facebook),
-        base,
-        bonus,
-        Math.round((base+bonus)*100)/100,
-        STATUS_LABELS[r.status]||r.status||"",
-        dateTimeLabel(r.submission_deadline),
-      ];
-    });
-    const aggregateRows = aggregatePlatformRows(platformRows || []);
-    const totals = {
-      clippers: Number((reports||[]).length),
-      videos: (reports||[]).reduce((sum, report) => sum + Number(report.video_count || 0), 0),
-      views: (reports||[]).reduce((sum, report) => sum + Number(report.total_views || 0), 0),
-      base: Math.round((reports||[]).reduce((sum, report) => sum + reportUncappedBase(report), 0) * 100) / 100,
-      bonus: Math.round((reports||[]).reduce((sum, report) => sum + Number(report.bonus_pay || 0), 0) * 100) / 100,
-      missingPayment: (reports||[]).filter(report => !String(report.payment_account || "").trim()).length,
-    };
-    const totalPay = Math.round((totals.base + totals.bonus) * 100) / 100;
-    const accountRollup = new Map();
-    for (const video of (videoRows || [])) {
-      const report = reportMap[video.report_id];
-      if (!report) continue;
-      const account = accountMap[video.account_id] || {};
-      const key = `${video.report_id}:${video.account_id || `${video.platform}:sin-cuenta`}`;
-      if (!accountRollup.has(key)) {
-        accountRollup.set(key, {
-          username: report.username || "",
-          clipero: `${report.names || ""} ${report.surnames || ""}`.trim(),
-          payment_method: paymentMethodLabel(report.payment_method),
-          payment_account: report.payment_account || "",
-          platform: platformLabel(video.platform),
-          account_name: account.account_name || "Sin cuenta asignada",
-          channel_url: account.channel_url || "",
-          videos: 0,
-          views: 0,
-          likes: 0,
-          comments: 0,
-          shares: 0,
-        });
+      if (reportIds.length && !platformRows.some((row) => reportIds.includes(row.report_id))) {
+        platformRows = await query(
+          state.supabase.from("weekly_report_platform_summary").select("*").in("report_id", reportIds)
+        );
       }
-      const row = accountRollup.get(key);
-      row.videos += 1;
-      row.views += Number(video.views || 0);
-      row.likes += Number(video.likes || 0);
-      row.comments += Number(video.comments || 0);
-      row.shares += Number(video.shares || 0);
-    }
-    const accountRows = [...accountRollup.values()]
-      .sort((a,b)=>a.clipero.localeCompare(b.clipero,"es") || a.platform.localeCompare(b.platform,"es") || a.account_name.localeCompare(b.account_name,"es"))
-      .map(row => [row.username,row.clipero,row.payment_method,row.payment_account,row.platform,row.account_name,row.channel_url,row.videos,row.views,row.likes,row.comments,row.shares]);
-    const videoSheetHeaders = ["Clipero","Usuario","Método pago","Cuenta pago","Plataforma","Cuenta social","Posición","Título","URL","Vistas","Likes","Comentarios","Compartidos","Estado métrica","Registrado"];
-    const videoSheetRows = (videoRows || []).map(video => {
-      const report = reportMap[video.report_id] || {};
-      const account = accountMap[video.account_id] || {};
-      return [
-        `${report.names || ""} ${report.surnames || ""}`.trim(),
-        report.username || "",
-        paymentMethodLabel(report.payment_method),
-        report.payment_account || "",
-        platformLabel(video.platform),
-        account.account_name || "",
-        Number(video.position || 0),
-        video.external_title || "",
-        video.video_url || "",
-        Number(video.views || 0),
-        Number(video.likes || 0),
-        Number(video.comments || 0),
-        Number(video.shares || 0),
-        video.metrics_status || "",
-        dateTimeLabel(video.created_at),
+
+      const exportWeekStart = state.adminWeek || state.activePeriod?.start_date || currentWeekStartISO();
+      const [videoRows, socialAccounts, accountPaymentRows, paymentTotalsRows] = await Promise.all([
+        reportIds.length
+          ? query(
+              state.supabase
+                .from("videos")
+                .select("id,report_id,user_id,platform,account_id,position,video_url,views,likes,comments,shares,external_title,metrics_status,created_at")
+                .in("report_id", reportIds)
+                .is("deleted_at", null)
+                .order("position")
+            )
+          : Promise.resolve([]),
+        userIds.length
+          ? query(
+              state.supabase
+                .from("social_accounts")
+                .select("id,user_id,platform,account_name,channel_url,active")
+                .in("user_id", userIds)
+            )
+          : Promise.resolve([]),
+        fetchAdminPeriodAccountPaymentsV280(exportWeekStart),
+        fetchAdminPeriodPaymentTotalsV280(exportWeekStart),
+      ]);
+
+      const byReport = {};
+      for (const row of platformRows || []) {
+        if (!byReport[row.report_id]) byReport[row.report_id] = {};
+        byReport[row.report_id][row.platform] = row;
+      }
+      const accountMap = Object.fromEntries((socialAccounts || []).map((account) => [account.id, account]));
+      const videosByReport = {};
+      for (const video of videoRows || []) {
+        (videosByReport[video.report_id] ||= []).push(video);
+      }
+      const paymentTotalMap = Object.fromEntries((paymentTotalsRows || []).map((row) => [row.report_id, row]));
+      const accountPaymentsByReport = {};
+      for (const row of accountPaymentRows || []) {
+        (accountPaymentsByReport[row.report_id] ||= []).push(row);
+      }
+      const reportBasePay = (report) => {
+        const mapped = paymentTotalMap[report?.report_id];
+        if (mapped) return Math.round(Number(mapped.base_pay || 0) * 100) / 100;
+        return reportUncappedBase(report);
+      };
+      const reportPlatformPay = (reportId, platform, fallbackRow = null) => {
+        const rows = (accountPaymentsByReport[reportId] || []).filter((row) => row.platform === platform);
+        if (rows.length) return Math.round(rows.reduce((sum, row) => sum + Number(row.final_pay || 0), 0) * 100) / 100;
+        return Math.round(Number(uncappedPlatformPay(fallbackRow || {})) * 100) / 100;
+      };
+      const periodPlatformPay = (platform, fallbackRow = null) => {
+        const rows = (accountPaymentRows || []).filter((row) => row.platform === platform);
+        if (rows.length) return Math.round(rows.reduce((sum, row) => sum + Number(row.final_pay || 0), 0) * 100) / 100;
+        return Math.round(Number(fallbackRow?.uncapped_pay || 0) * 100) / 100;
+      };
+      const capAppliedForReport = (reportId) => (accountPaymentsByReport[reportId] || []).some((row) => row.cap_enabled);
+      const anyCapApplied = (accountPaymentRows || []).some((row) => row.cap_enabled);
+
+      const safeXml = (value) => String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&apos;");
+
+      const cell = (value, options = {}) => {
+        const type = options.type || (typeof value === "number" && Number.isFinite(value) ? "Number" : "String");
+        const style = options.style ? ` ss:StyleID="${safeXml(options.style)}"` : "";
+        const href = options.href ? ` ss:HRef="${safeXml(options.href)}"` : "";
+        const merge = Number(options.mergeAcross || 0) > 0 ? ` ss:MergeAcross="${Number(options.mergeAcross)}"` : "";
+        const index = Number(options.index || 0) > 0 ? ` ss:Index="${Number(options.index)}"` : "";
+        const resolved = type === "Number" ? Number(value || 0) : safeXml(value);
+        return `<Cell${style}${href}${merge}${index}><Data ss:Type="${type}">${resolved}</Data></Cell>`;
+      };
+
+      const rowXml = (cells, options = {}) => {
+        const height = options.height ? ` ss:Height="${Number(options.height)}"` : "";
+        return `<Row${height}>${cells.map((item) => {
+          if (item && typeof item === "object" && !Array.isArray(item) && Object.prototype.hasOwnProperty.call(item, "value")) {
+            return cell(item.value, item);
+          }
+          return cell(item);
+        }).join("")}</Row>`;
+      };
+
+      const worksheetOptions = (freezeRows = 0) => freezeRows > 0
+        ? `<WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel"><FreezePanes/><FrozenNoSplit/><SplitHorizontal>${freezeRows}</SplitHorizontal><TopRowBottomPane>${freezeRows}</TopRowBottomPane><ActivePane>2</ActivePane><ProtectObjects>False</ProtectObjects><ProtectScenarios>False</ProtectScenarios></WorksheetOptions>`
+        : `<WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel"><ProtectObjects>False</ProtectObjects><ProtectScenarios>False</ProtectScenarios></WorksheetOptions>`;
+
+      const sheet = (name, rows, widths = [], freezeRows = 0) => {
+        const columns = widths.map((width) => `<Column ss:AutoFitWidth="0" ss:Width="${Number(width)}"/>`).join("");
+        return `<Worksheet ss:Name="${safeXml(name)}"><Table>${columns}${rows.map((row) => Array.isArray(row) ? rowXml(row) : rowXml(row.cells || [], row)).join("")}</Table>${worksheetOptions(freezeRows)}</Worksheet>`;
+      };
+
+      const platformColors = {
+        tiktok: { header: "sTikTokHeader", soft: "sTikTokSoft" },
+        instagram: { header: "sInstagramHeader", soft: "sInstagramSoft" },
+        youtube: { header: "sYoutubeHeader", soft: "sYoutubeSoft" },
+        facebook: { header: "sFacebookHeader", soft: "sFacebookSoft" },
+      };
+      const platformOrder = ["tiktok", "facebook", "youtube", "instagram"];
+
+      const periodStart = exportWeekStart;
+      const periodEndDate = new Date(`${periodStart}T12:00:00Z`);
+      periodEndDate.setUTCDate(periodEndDate.getUTCDate() + 6);
+      const periodText = periodRangeLabel({ week_start: periodStart, week_end: periodEndDate.toISOString().slice(0, 10) });
+      const exportedText = dateTimeLabel(new Date().toISOString());
+
+      const aggregateRows = aggregatePlatformRows(platformRows || []);
+      const totals = {
+        clippers: Number((reports || []).length),
+        videos: (reports || []).reduce((sum, report) => sum + Number(report.video_count || 0), 0),
+        views: (reports || []).reduce((sum, report) => sum + Number(report.total_views || 0), 0),
+        base: Math.round((reports || []).reduce((sum, report) => sum + reportBasePay(report), 0) * 100) / 100,
+        bonus: Math.round((reports || []).reduce((sum, report) => sum + Number(report.bonus_pay || 0), 0) * 100) / 100,
+        total: Math.round((reports || []).reduce((sum, report) => sum + reportDisplayTotal(report), 0) * 100) / 100,
+        missingPayment: (reports || []).filter((report) => !String(report.payment_account || "").trim()).length,
+      };
+
+      const summaryRows = [
+        { height: 30, cells: [{ value: "CLIPCONTROL · REPORTE EJECUTIVO", style: "sTitle", mergeAcross: 9 }] },
+        { height: 21, cells: [{ value: `${periodText} · Exportado ${exportedText} · Resumen + una hoja por clipero${anyCapApplied ? " · techo por cuenta aplicado" : ""}`, style: "sSubtitle", mergeAcross: 9 }] },
+        [{ value: "", mergeAcross: 9 }],
+        [
+          { value: "CLIPEROS", style: "sKpiLabel", mergeAcross: 1 },
+          { value: "VIDEOS", style: "sKpiLabel", mergeAcross: 1 },
+          { value: "VISTAS", style: "sKpiLabel", mergeAcross: 1 },
+          { value: "PAGO TOTAL", style: "sKpiLabel", mergeAcross: 1 },
+          { value: "SIN DATOS DE PAGO", style: "sKpiLabel", mergeAcross: 1 },
+        ],
+        [
+          { value: totals.clippers, type: "Number", style: "sKpiValue", mergeAcross: 1 },
+          { value: totals.videos, type: "Number", style: "sKpiValue", mergeAcross: 1 },
+          { value: totals.views, type: "Number", style: "sKpiNumber", mergeAcross: 1 },
+          { value: totals.total, type: "Number", style: "sKpiMoney", mergeAcross: 1 },
+          { value: totals.missingPayment, type: "Number", style: totals.missingPayment ? "sKpiWarn" : "sKpiValue", mergeAcross: 1 },
+        ],
+        [{ value: "", mergeAcross: 9 }],
+        { cells: [{ value: "RESUMEN POR RED SOCIAL", style: "sSection", mergeAcross: 9 }] },
+        [
+          { value: "Red", style: "sHeader" }, { value: "Videos", style: "sHeader" }, { value: "Vistas", style: "sHeader" },
+          { value: "Likes", style: "sHeader" }, { value: "Comentarios", style: "sHeader" }, { value: "Compartidos", style: "sHeader" },
+          { value: "Pago proyectado", style: "sHeader" }, { value: "Meta", style: "sHeader" }, { value: "Estado de pago", style: "sHeader" },
+          { value: "", style: "sHeader" },
+        ],
+        ...platformOrder.map((platform) => {
+          const row = aggregateRows.find((item) => item.platform === platform) || {};
+          const pay = periodPlatformPay(platform, row);
+          const rule = (platformRows || []).find((item) => item.platform === platform) || {};
+          return [
+            { value: platformLabel(platform), style: platformColors[platform].soft },
+            { value: Number(row.video_count || 0), type: "Number", style: "sNumber" },
+            { value: Number(row.views || 0), type: "Number", style: "sNumber" },
+            { value: Number(row.likes || 0), type: "Number", style: "sNumber" },
+            { value: Number(row.comments || 0), type: "Number", style: "sNumber" },
+            { value: Number(row.shares || 0), type: "Number", style: "sNumber" },
+            { value: pay, type: "Number", style: "sMoney" },
+            { value: Number(rule.target_views || 0), type: "Number", style: "sNumber" },
+            { value: rule.pay_enabled === false ? "Informativo" : "Remunerado", style: "sText" },
+            { value: "", style: "sText" },
+          ];
+        }),
+        [{ value: "", mergeAcross: 9 }],
+        { cells: [{ value: "RESUMEN POR CLIPERO", style: "sSection", mergeAcross: 9 }] },
+        [
+          { value: "Clipero", style: "sHeader" }, { value: "Usuario", style: "sHeader" }, { value: "Videos", style: "sHeader" },
+          { value: "Vistas", style: "sHeader" }, { value: "Pago por vistas", style: "sHeader" }, { value: "Bono", style: "sHeader" },
+          { value: "Pago total", style: "sHeader" }, { value: "Estado", style: "sHeader" }, { value: "Método", style: "sHeader" },
+          { value: "Cuenta de pago", style: "sHeader" },
+        ],
+        ...(reports || []).map((report) => [
+          { value: `${report.names || ""} ${report.surnames || ""}`.trim() || report.username || "Clipero", style: "sText" },
+          { value: `@${report.username || ""}`, style: "sText" },
+          { value: Number(report.video_count || 0), type: "Number", style: "sNumber" },
+          { value: Number(report.total_views || 0), type: "Number", style: "sNumber" },
+          { value: reportBasePay(report), type: "Number", style: "sMoney" },
+          { value: Number(report.bonus_pay || 0), type: "Number", style: "sMoney" },
+          { value: reportDisplayTotal(report), type: "Number", style: "sMoneyStrong" },
+          { value: STATUS_LABELS[report.status] || report.status || "", style: "sText" },
+          { value: paymentMethodLabel(report.payment_method), style: "sText" },
+          { value: report.payment_account || "Pendiente", style: report.payment_account ? "sText" : "sWarnText" },
+        ]),
+        [
+          { value: "TOTAL", style: "sTotal", mergeAcross: 1 },
+          { value: totals.videos, type: "Number", style: "sTotalNumber" },
+          { value: totals.views, type: "Number", style: "sTotalNumber" },
+          { value: totals.base, type: "Number", style: "sTotalMoney" },
+          { value: totals.bonus, type: "Number", style: "sTotalMoney" },
+          { value: totals.total, type: "Number", style: "sTotalMoney" },
+          { value: "", style: "sTotal" }, { value: "", style: "sTotal" }, { value: "", style: "sTotal" },
+        ],
       ];
-    });
-    const summaryRows = [
-      ["Período", periodRangeLabel({ week_start: state.adminWeek, week_end: (() => { const date = new Date(`${state.adminWeek || currentWeekStartISO()}T12:00:00Z`); date.setUTCDate(date.getUTCDate() + 6); return date.toISOString().slice(0, 10); })() })],
-      ["Exportado", dateTimeLabel(new Date().toISOString())],
-      ["Cliperos", totals.clippers],
-      ["Videos", totals.videos],
-      ["Vistas totales", totals.views],
-      ["Pago por vistas", totals.base],
-      ["Bonos", totals.bonus],
-      ["Pago total", totalPay],
-      ["Sin datos de pago", totals.missingPayment],
-      [""],
-      ["Clipero","Método pago","Cuenta pago","Titular","Estado","Pago total"],
-      ...(reports||[]).map(report => [`${report.names || ""} ${report.surnames || ""}`.trim(), paymentMethodLabel(report.payment_method), report.payment_account || "Pendiente", report.payment_holder || "", STATUS_LABELS[report.status] || report.status || "", reportDisplayTotal(report)]),
-      [""],
-      ["Red","Videos","Vistas","Likes","Comentarios","Compartidos","Pago proyectado"],
-      ...aggregateRows.map(row => [platformLabel(row.platform), Number(row.video_count||0), Number(row.views||0), Number(row.likes||0), Number(row.comments||0), Number(row.shares||0), Math.round(Number(row.uncapped_pay||0)*100)/100]),
-    ];
-    const workbook = `<?xml version="1.0"?>
-<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
-${sheet("Resumen", summaryRows)}
-${sheet("Cliperos", [detailHeaders, ...detailRows])}
-${sheet("Cuentas", [["Usuario","Clipero","Método pago","Cuenta pago","Plataforma","Cuenta social","Canal","Videos","Vistas","Likes","Comentarios","Compartidos"], ...accountRows])}
-${sheet("Videos", [videoSheetHeaders, ...videoSheetRows])}
-</Workbook>`;
-    const filenameDate = String(state.adminWeek || currentWeekStartISO()).replace(/[^\d-]/g,"");
-    const blob=new Blob(["\ufeff",workbook],{type:"application/vnd.ms-excel"});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement("a");
-    a.href=url;
-    a.download=`ClipControl_${filenameDate}_resumen.xls`;
-    a.click();
-    setTimeout(()=>URL.revokeObjectURL(url),1000);
-    toast("Excel exportado con resumen y detalle", "success");
+
+      const usedNames = new Set(["resumen"]);
+      const sheetNameFor = (report, index) => {
+        const raw = `${report.names || ""} ${report.surnames || ""}`.trim() || report.username || `Clipero ${index + 1}`;
+        const clean = raw.replace(/[\\/:?*\[\]]/g, " ").replace(/\s+/g, " ").trim() || `Clipero ${index + 1}`;
+        let name = clean.slice(0, 31);
+        let suffix = 2;
+        while (usedNames.has(name.toLowerCase())) {
+          const tail = ` ${suffix++}`;
+          name = `${clean.slice(0, Math.max(1, 31 - tail.length))}${tail}`;
+        }
+        usedNames.add(name.toLowerCase());
+        return name;
+      };
+
+      const clipperSheets = (reports || []).map((report, index) => {
+        const reportVideos = (videosByReport[report.report_id] || []).slice().sort((a, b) => Number(a.position || 0) - Number(b.position || 0));
+        const p = byReport[report.report_id] || {};
+        const clipperName = `${report.names || ""} ${report.surnames || ""}`.trim() || report.username || "Clipero";
+        const basePay = reportBasePay(report);
+        const bonusPay = Number(report.bonus_pay || 0);
+        const totalPay = reportDisplayTotal(report);
+        const rows = [
+          { height: 30, cells: [{ value: `CLIPCONTROL · ${clipperName.toUpperCase()}`, style: "sTitle", mergeAcross: 9 }] },
+          { height: 21, cells: [{ value: `@${report.username || ""} · ${periodText}`, style: "sSubtitle", mergeAcross: 9 }] },
+          [{ value: "", mergeAcross: 9 }],
+          { cells: [{ value: "DATOS DEL CLIPERO", style: "sSection", mergeAcross: 9 }] },
+          [
+            { value: "Nombre", style: "sLabel" }, { value: clipperName, style: "sText", mergeAcross: 1 },
+            { value: "Usuario", style: "sLabel" }, { value: `@${report.username || ""}`, style: "sText" },
+            { value: "WhatsApp", style: "sLabel" }, { value: report.phone || "—", style: "sText" },
+            { value: "Estado", style: "sLabel" }, { value: STATUS_LABELS[report.status] || report.status || "", style: "sText" },
+          ],
+          [
+            { value: "Cuenta principal", style: "sLabel" },
+            { value: report.primary_social_url || "—", style: report.primary_social_url ? "sLink" : "sText", href: report.primary_social_url || null, mergeAcross: 3 },
+            { value: "Cierre", style: "sLabel" }, { value: dateTimeLabel(report.submission_deadline), style: "sText", mergeAcross: 2 },
+          ],
+          [{ value: "", mergeAcross: 9 }],
+          { cells: [{ value: "DATOS DE PAGO", style: "sSection", mergeAcross: 9 }] },
+          [
+            { value: "Método", style: "sLabel" }, { value: paymentMethodLabel(report.payment_method), style: "sText" },
+            { value: "Cuenta / número", style: "sLabel" }, { value: report.payment_account || "Pendiente", style: report.payment_account ? "sText" : "sWarnText", mergeAcross: 1 },
+            { value: "Titular", style: "sLabel" }, { value: report.payment_holder || clipperName, style: "sText", mergeAcross: 1 },
+            { value: "N° operación", style: "sLabel" }, { value: report.transaction_number || "—", style: "sText" },
+          ],
+          [
+            { value: "Pago por vistas", style: "sLabel" }, { value: basePay, type: "Number", style: "sMoneyStrong" },
+            { value: "Bono adicional", style: "sLabel" }, { value: bonusPay, type: "Number", style: "sMoney" },
+            { value: "PAGO TOTAL", style: "sLabelStrong" }, { value: totalPay, type: "Number", style: "sKpiMoney", mergeAcross: 1 },
+            { value: "Videos", style: "sLabel" }, { value: Number(report.video_count || reportVideos.length), type: "Number", style: "sNumber" },
+          ],
+          [
+            { value: "Regla de pago", style: "sLabel" },
+            { value: capAppliedForReport(report.report_id) ? "Techo por cuenta activo" : "Pago proporcional", style: capAppliedForReport(report.report_id) ? "sCap" : "sText", mergeAcross: 8 },
+          ],
+          [{ value: "", mergeAcross: 9 }],
+          { cells: [{ value: "RESUMEN POR RED", style: "sSection", mergeAcross: 9 }] },
+          [
+            { value: "Red", style: "sHeader" }, { value: "Cuenta(s)", style: "sHeader", mergeAcross: 1 }, { value: "Videos", style: "sHeader" },
+            { value: "Vistas", style: "sHeader" }, { value: "Likes", style: "sHeader" }, { value: "Comentarios", style: "sHeader" },
+            { value: "Compartidos", style: "sHeader" }, { value: "Pago", style: "sHeader" }, { value: "", style: "sHeader" },
+          ],
+        ];
+
+        for (const platform of platformOrder) {
+          const platformVideos = reportVideos.filter((video) => video.platform === platform);
+          const summary = p[platform] || {};
+          const accountNames = [...new Set(platformVideos.map((video) => accountMap[video.account_id]?.account_name).filter(Boolean))].join(", ") || "—";
+          rows.push([
+            { value: platformLabel(platform), style: platformColors[platform].soft },
+            { value: accountNames, style: "sText", mergeAcross: 1 },
+            { value: Number(platformVideos.length || summary.video_count || 0), type: "Number", style: "sNumber" },
+            { value: Number(summary.views ?? platformVideos.reduce((sum, video) => sum + Number(video.views || 0), 0)), type: "Number", style: "sNumber" },
+            { value: Number(summary.likes ?? platformVideos.reduce((sum, video) => sum + Number(video.likes || 0), 0)), type: "Number", style: "sNumber" },
+            { value: Number(summary.comments ?? platformVideos.reduce((sum, video) => sum + Number(video.comments || 0), 0)), type: "Number", style: "sNumber" },
+            { value: Number(summary.shares ?? platformVideos.reduce((sum, video) => sum + Number(video.shares || 0), 0)), type: "Number", style: "sNumber" },
+            { value: reportPlatformPay(report.report_id, platform, summary), type: "Number", style: "sMoney" },
+            { value: "", style: "sText" },
+          ]);
+        }
+
+        for (const platform of platformOrder) {
+          const platformVideos = reportVideos.filter((video) => video.platform === platform);
+          if (!platformVideos.length) continue;
+          const styles = platformColors[platform];
+          rows.push([{ value: "", mergeAcross: 9 }]);
+          rows.push({ cells: [{ value: `${platformLabel(platform).toUpperCase()} · ${platformVideos.length} VIDEO${platformVideos.length === 1 ? "" : "S"}`, style: styles.header, mergeAcross: 9 }] });
+          rows.push([
+            { value: "N.°", style: styles.header }, { value: "Cuenta", style: styles.header }, { value: "Video / título", style: styles.header },
+            { value: "Enlace", style: styles.header }, { value: "Vistas", style: styles.header }, { value: "Likes", style: styles.header },
+            { value: "Comentarios", style: styles.header }, { value: "Compartidos", style: styles.header }, { value: "Estado", style: styles.header },
+            { value: "Fecha", style: styles.header },
+          ]);
+          for (const video of platformVideos) {
+            const account = accountMap[video.account_id] || {};
+            rows.push([
+              { value: Number(video.position || 0), type: "Number", style: "sNumber" },
+              { value: account.account_name || "—", style: "sText" },
+              { value: video.external_title || `Video ${video.position || ""}`, style: "sTextWrap" },
+              { value: "Abrir video", style: "sLink", href: video.video_url || null },
+              { value: Number(video.views || 0), type: "Number", style: "sNumber" },
+              { value: Number(video.likes || 0), type: "Number", style: "sNumber" },
+              { value: Number(video.comments || 0), type: "Number", style: "sNumber" },
+              { value: Number(video.shares || 0), type: "Number", style: "sNumber" },
+              { value: video.metrics_status || "", style: "sText" },
+              { value: dateTimeLabel(video.created_at), style: "sText" },
+            ]);
+          }
+          const platformSummary = p[platform] || {};
+          rows.push([
+            { value: "TOTAL", style: "sTotal", mergeAcross: 3 },
+            { value: Number(platformSummary.views ?? platformVideos.reduce((sum, video) => sum + Number(video.views || 0), 0)), type: "Number", style: "sTotalNumber" },
+            { value: Number(platformSummary.likes ?? platformVideos.reduce((sum, video) => sum + Number(video.likes || 0), 0)), type: "Number", style: "sTotalNumber" },
+            { value: Number(platformSummary.comments ?? platformVideos.reduce((sum, video) => sum + Number(video.comments || 0), 0)), type: "Number", style: "sTotalNumber" },
+            { value: Number(platformSummary.shares ?? platformVideos.reduce((sum, video) => sum + Number(video.shares || 0), 0)), type: "Number", style: "sTotalNumber" },
+            { value: `Pago ${money(reportPlatformPay(report.report_id, platform, platformSummary))}`, style: "sTotal" },
+            { value: "", style: "sTotal" },
+          ]);
+        }
+
+        return sheet(sheetNameFor(report, index), rows, [45, 115, 250, 95, 75, 75, 80, 80, 92, 105], 2);
+      });
+
+      const styles = `
+<Styles>
+  <Style ss:ID="Default" ss:Name="Normal"><Alignment ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="10" ss:Color="#172033"/><Interior/><NumberFormat/><Protection/></Style>
+  <Style ss:ID="sTitle"><Alignment ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="16" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#17233C" ss:Pattern="Solid"/></Style>
+  <Style ss:ID="sSubtitle"><Alignment ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="10" ss:Color="#D9E2F2"/><Interior ss:Color="#17233C" ss:Pattern="Solid"/></Style>
+  <Style ss:ID="sSection"><Alignment ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#6557D9" ss:Pattern="Solid"/></Style>
+  <Style ss:ID="sHeader"><Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/><Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#334155" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#CBD5E1"/></Borders></Style>
+  <Style ss:ID="sText"><Alignment ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="9"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/></Borders></Style>
+  <Style ss:ID="sTextWrap"><Alignment ss:Vertical="Center" ss:WrapText="1"/><Font ss:FontName="Calibri" ss:Size="9"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/></Borders></Style>
+  <Style ss:ID="sLabel"><Alignment ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#475569"/><Interior ss:Color="#F1F5F9" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/></Borders></Style>
+  <Style ss:ID="sLabelStrong"><Alignment ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#16A34A" ss:Pattern="Solid"/></Style>
+  <Style ss:ID="sNumber"><Alignment ss:Horizontal="Right" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="9"/><NumberFormat ss:Format="#,##0"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/></Borders></Style>
+  <Style ss:ID="sMoney"><Alignment ss:Horizontal="Right" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="9"/><NumberFormat ss:Format='"S/" #,##0.00'/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/></Borders></Style>
+  <Style ss:ID="sMoneyStrong"><Alignment ss:Horizontal="Right" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="10" ss:Bold="1" ss:Color="#166534"/><Interior ss:Color="#ECFDF3" ss:Pattern="Solid"/><NumberFormat ss:Format='"S/" #,##0.00'/></Style>
+  <Style ss:ID="sLink"><Alignment ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="9" ss:Color="#4F46E5" ss:Underline="Single"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/></Borders></Style>
+  <Style ss:ID="sWarnText"><Alignment ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#B45309"/><Interior ss:Color="#FFF7ED" ss:Pattern="Solid"/></Style>
+  <Style ss:ID="sCap"><Alignment ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#166534"/><Interior ss:Color="#ECFDF3" ss:Pattern="Solid"/></Style>
+  <Style ss:ID="sKpiLabel"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="8" ss:Bold="1" ss:Color="#64748B"/><Interior ss:Color="#F8FAFC" ss:Pattern="Solid"/></Style>
+  <Style ss:ID="sKpiValue"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="15" ss:Bold="1" ss:Color="#17233C"/><Interior ss:Color="#EEF2FF" ss:Pattern="Solid"/><NumberFormat ss:Format="#,##0"/></Style>
+  <Style ss:ID="sKpiNumber"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="15" ss:Bold="1" ss:Color="#17233C"/><Interior ss:Color="#EEF2FF" ss:Pattern="Solid"/><NumberFormat ss:Format="#,##0"/></Style>
+  <Style ss:ID="sKpiMoney"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="15" ss:Bold="1" ss:Color="#166534"/><Interior ss:Color="#ECFDF3" ss:Pattern="Solid"/><NumberFormat ss:Format='"S/" #,##0.00'/></Style>
+  <Style ss:ID="sKpiWarn"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="15" ss:Bold="1" ss:Color="#B45309"/><Interior ss:Color="#FFF7ED" ss:Pattern="Solid"/><NumberFormat ss:Format="#,##0"/></Style>
+  <Style ss:ID="sTotal"><Alignment ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#17233C"/><Interior ss:Color="#E2E8F0" ss:Pattern="Solid"/></Style>
+  <Style ss:ID="sTotalNumber"><Alignment ss:Horizontal="Right" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1"/><Interior ss:Color="#E2E8F0" ss:Pattern="Solid"/><NumberFormat ss:Format="#,##0"/></Style>
+  <Style ss:ID="sTotalMoney"><Alignment ss:Horizontal="Right" ss:Vertical="Center"/><Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#166534"/><Interior ss:Color="#DCFCE7" ss:Pattern="Solid"/><NumberFormat ss:Format='"S/" #,##0.00'/></Style>
+  <Style ss:ID="sTikTokHeader"><Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/><Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#111827" ss:Pattern="Solid"/></Style>
+  <Style ss:ID="sTikTokSoft"><Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#111827"/><Interior ss:Color="#F1F5F9" ss:Pattern="Solid"/></Style>
+  <Style ss:ID="sFacebookHeader"><Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/><Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#1877F2" ss:Pattern="Solid"/></Style>
+  <Style ss:ID="sFacebookSoft"><Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#0B57D0"/><Interior ss:Color="#EAF2FF" ss:Pattern="Solid"/></Style>
+  <Style ss:ID="sYoutubeHeader"><Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/><Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#DC2626" ss:Pattern="Solid"/></Style>
+  <Style ss:ID="sYoutubeSoft"><Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#B91C1C"/><Interior ss:Color="#FEF2F2" ss:Pattern="Solid"/></Style>
+  <Style ss:ID="sInstagramHeader"><Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/><Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#C13584" ss:Pattern="Solid"/></Style>
+  <Style ss:ID="sInstagramSoft"><Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1" ss:Color="#A21CAF"/><Interior ss:Color="#FDF2F8" ss:Pattern="Solid"/></Style>
+</Styles>`;
+
+      const workbook = `<?xml version="1.0"?>\n<?mso-application progid="Excel.Sheet"?>\n<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet" xmlns:html="http://www.w3.org/TR/REC-html40">${styles}${sheet("Resumen", summaryRows, [145, 88, 82, 82, 90, 90, 105, 95, 105, 135], 2)}${clipperSheets.join("")}</Workbook>`;
+
+      const filenameDate = String(periodStart).replace(/[^\d-]/g, "");
+      const blob = new Blob(["\ufeff", workbook], { type: "application/vnd.ms-excel" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `ClipControl_${filenameDate}_reporte_segmentado.xls`;
+      anchor.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast("Reporte exportado: Resumen + una hoja por clipero y red", "success");
+    } catch (error) {
+      console.error("Error exportando Excel segmentado:", error);
+      toast(`No se pudo exportar el Excel: ${errorMessage(error)}`, "error");
+    } finally {
+      showLoading(false);
+    }
   }
 
   async function loadClipperCurrentData() {
@@ -4734,6 +4968,7 @@ ${sheet("Videos", [videoSheetHeaders, ...videoSheetRows])}
 
   function errorMessage(error) {
     const msg=error?.message||String(error||"Error inesperado");
+    if(/v280|payment_cap_settings_v280|clipper_payment_cap_overrides_v280|clipcontrol_account_payments_v280|clipcontrol_motivation_v280/i.test(msg))return "Falta ejecutar el SQL 28 de ClipControl 2.8.0 en Supabase.";
     if(/admin_quick_review_report_v234|clipcontrol_auto_submit_due_reports_v234|clipcontrol_uncapped_platform_pay/i.test(msg))return "Falta ejecutar 24_clipcontrol_pago_sin_techo_autoenvio.sql en Supabase.";
     if(/profile-avatars|avatar_url|update_my_avatar_url|admin_return_report_to_draft/i.test(msg))return "Falta ejecutar 23_clipcontrol_ui_profile_draft.sql en Supabase.";
     if(/metrics_live_enabled|metrics_live_interval_minutes|metrics_live_batch_size|realtime_ui_enabled|sync_my_due_metrics/i.test(msg))return "Falta instalar la actualización SQL/Edge Function de ClipControl 2.2 LIVE.";
@@ -4748,14 +4983,477 @@ ${sheet("Videos", [videoSheetHeaders, ...videoSheetRows])}
   }
 
 
+
+  /* ===================================================================
+     CLIPCONTROL 2.8.0 · UX MOTIVACIONAL + TECHO DE PAGO POR CUENTA
+     - Administración: operación y evaluación, sin ranking motivacional.
+     - Cliperos: ranking por cuenta social y video viral sin nombres reales.
+     - Pago: techo opcional por CADA cuenta social, global o por clipero.
+     - No modifica Edge Function ni el motor de métricas.
+     =================================================================== */
+
+  function rpcRowV280(value) {
+    return Array.isArray(value) ? (value[0] || null) : (value || null);
+  }
+
+  function isMissingV280(error) {
+    return /v280|Could not find the function|PGRST202|does not exist/i.test(String(error?.message || error || ""));
+  }
+
+  async function fetchPaymentCapConfigV280(userId = null) {
+    try {
+      const data = userId && ["admin","superadmin"].includes(state.profile?.role)
+        ? await query(state.supabase.rpc("admin_get_payment_cap_v280", { p_user_id: userId }))
+        : ["admin","superadmin"].includes(state.profile?.role)
+        ? await query(state.supabase.rpc("admin_get_payment_cap_v280", { p_user_id: null }))
+        : await query(state.supabase.rpc("clipcontrol_my_payment_cap_v280"));
+      return rpcRowV280(data);
+    } catch (error) {
+      if (!isMissingV280(error)) console.warn("payment cap config", error);
+      return null;
+    }
+  }
+
+  async function fetchAccountPaymentsV280(reportId) {
+    if (!reportId) return [];
+    try {
+      const data = await query(state.supabase.rpc("clipcontrol_account_payments_v280", { p_report_id: reportId }));
+      return Array.isArray(data) ? data : [];
+    } catch (error) {
+      if (!isMissingV280(error)) console.warn("account payment v280", error);
+      return [];
+    }
+  }
+
+  async function fetchAdminPeriodPaymentTotalsV280(weekStart) {
+    try {
+      const data = await query(state.supabase.rpc("admin_period_payment_totals_v280", { p_week_start: weekStart }));
+      return Array.isArray(data) ? data : [];
+    } catch (error) {
+      if (!isMissingV280(error)) console.warn("period payment totals v280", error);
+      return [];
+    }
+  }
+
+  async function fetchAdminPeriodAccountPaymentsV280(weekStart) {
+    try {
+      const data = await query(state.supabase.rpc("admin_period_account_payments_v280", { p_week_start: weekStart }));
+      return Array.isArray(data) ? data : [];
+    } catch (error) {
+      if (!isMissingV280(error)) console.warn("period account payments v280", error);
+      return [];
+    }
+  }
+
+  async function fetchClipperMotivationV280() {
+    try {
+      return rpcRowV280(await query(state.supabase.rpc("clipcontrol_motivation_v280")));
+    } catch (error) {
+      if (!isMissingV280(error)) console.warn("motivation v280", error);
+      return null;
+    }
+  }
+
+  async function adminQuickReviewV280(payload) {
+    try {
+      return await query(state.supabase.rpc("admin_quick_review_report_v280", payload));
+    } catch (error) {
+      if (!isMissingV280(error)) throw error;
+      return await query(state.supabase.rpc("admin_quick_review_report_v234", payload));
+    }
+  }
+
+  function reportDisplayTotal(report) {
+    const mapped = state.paymentTotalsV280?.[report?.report_id];
+    if (mapped) return Math.round(Number(mapped.total_pay || 0) * 100) / 100;
+    const base = reportUncappedBase(report);
+    const bonus = Number(report?.bonus_pay || 0);
+    return Math.round((base + bonus) * 100) / 100;
+  }
+
+  function reportPlatformProgressMarkup(reportId, userId = null) {
+    const sourceRows = platformRowsForReport(reportId);
+    const rowMap = Object.fromEntries(sourceRows.map(row => [row.platform,row]));
+    const registered = userId ? compactRegisteredPlatformsForUser(userId) : [];
+    const platforms = registered.length ? registered : [...new Set(sourceRows.filter(row => Number(row.video_count || 0) > 0).map(row => row.platform))];
+    if (!platforms.length) return `<span class="report-network-empty">Sin redes</span>`;
+    return `<div class="report-network-progress report-network-progress-v234">${platforms.map(platform => {
+      const row = normalizedPlatformRow(platform,rowMap[platform]);
+      const raw = row.pay_enabled ? platformProgressRaw(row) : 0;
+      const detail = row.pay_enabled ? `${Math.round(raw)}% · ${num(row.views)} vistas` : `${num(row.views)} vistas`;
+      return `<span class="report-network-pill platform-pill-${platform}" title="${esc(`${platformLabel(platform)} · ${num(row.views)} vistas`)}">${platformLogo(platform)}<span><b>${row.pay_enabled?`${Math.round(raw)}%`:num(row.views)}</b><small>${esc(detail)}</small></span></span>`;
+    }).join("")}</div>`;
+  }
+
+  function adminAccountPaymentBreakdownV280(rows = []) {
+    if (!rows.length) return "";
+    const capActive = rows.some(row => row.cap_enabled);
+    return `<section class="account-pay-breakdown-v280"><div class="account-pay-head-v280"><div><span class="section-eyebrow">PAGO POR CUENTA</span><h3>${capActive ? "Techo aplicado por cuenta" : "Cálculo por cuenta"}</h3></div>${capActive ? '<span class="pill pill-green">TECHO ACTIVO</span>' : '<span class="chip">SIN TECHO</span>'}</div><div class="account-pay-grid-v280">${rows.map(row => `<div class="account-pay-row-v280">${platformLogo(row.platform)}<div><strong>${esc(row.account_name || platformLabel(row.platform))}</strong><small>${num(row.views)} vistas${row.cap_enabled ? ` · máximo ${money(row.cap_amount)}` : ""}</small></div><b>${money(row.final_pay)}</b>${row.cap_reached ? '<span class="cap-hit-v280">TOPE</span>' : ""}</div>`).join("")}</div></section>`;
+  }
+
+  function paymentFormulaNoteV280(rows = []) {
+    const capped = rows.some(row => row.cap_enabled);
+    if (!rows.length) return `<div class="formula-box formula-box-v234"><b>Pago por vistas</b><span>Se usa la regla configurada para cada red.</span></div>`;
+    if (!capped) return `<div class="formula-box formula-box-v234"><b>Pago sin techo</b><span>Cada cuenta crece proporcionalmente según la regla de su red.</span></div>`;
+    const sample = rows.find(row => row.cap_enabled) || rows[0];
+    return `<div class="formula-box formula-box-v234"><b>Techo por cuenta</b><span>${num(sample.cap_views)} vistas → máximo ${money(sample.cap_amount)} por cada cuenta social. Las cuentas se calculan por separado.</span></div>`;
+  }
+
+  function adminPlatformOverviewV280(videos = []) {
+    const summary = summarizeVideosByPlatform(videos);
+    return `<section class="admin-platform-strip-v280">${Object.keys(PLATFORMS).map(platform => {
+      const row = summary[platform] || {videos:0,views:0};
+      return `<article class="admin-platform-mini-v280 platform-mini-${platform}"><div>${platformBadge(platform,true)}<small>${row.videos} videos</small></div><strong>${num(row.views)}</strong><span>vistas</span></article>`;
+    }).join("")}</section>`;
+  }
+
+  async function renderAdminReportsV240() {
+    setHeader("Inicio", "Operación del período");
+    try { await state.supabase.rpc("clipcontrol_auto_submit_due_reports_v234"); } catch (_) {}
+    const periods = await query(state.supabase.from("reporting_periods").select("*").order("start_date",{ascending:false}).limit(20));
+    if (!state.adminWeek) state.adminWeek = state.activePeriod?.start_date || periods?.[0]?.start_date || currentWeekStartISO();
+    const reports = await query(state.supabase.from("weekly_report_summary").select("*").eq("week_start",state.adminWeek).order("total_views",{ascending:false}));
+    const reportIds = reports.map(report => report.report_id);
+    const [platformRows,data,paymentRules,paymentTotals] = await Promise.all([
+      reportIds.length ? query(state.supabase.from("weekly_report_platform_summary").select("*").in("report_id",reportIds)) : Promise.resolve([]),
+      loadAdminVideoCenterData(reports,true),
+      query(state.supabase.from("platform_payment_rules").select("*")).catch(()=>[]),
+      fetchAdminPeriodPaymentTotalsV280(state.adminWeek),
+    ]);
+    state.adminReportIds = reportIds;
+    state.adminPlatformRows = platformRows || [];
+    state.platformRuleMap = Object.fromEntries((paymentRules||[]).map(rule => [rule.platform,rule]));
+    state.paymentTotalsV280 = Object.fromEntries((paymentTotals||[]).map(row => [row.report_id,row]));
+    state.adminRegisteredPlatformsByUser = {};
+    for (const account of data.accounts || []) {
+      if (!state.adminRegisteredPlatformsByUser[account.user_id]) state.adminRegisteredPlatformsByUser[account.user_id] = [];
+      if (account.active !== false && !state.adminRegisteredPlatformsByUser[account.user_id].includes(account.platform)) state.adminRegisteredPlatformsByUser[account.user_id].push(account.platform);
+    }
+    const selectedPeriod = periods.find(period => period.start_date === state.adminWeek);
+    const totalViews = data.videos.reduce((sum,video) => sum + Number(video.views||0),0);
+    const projected = reports.reduce((sum,report) => sum + reportDisplayTotal(report),0);
+    const metricIssues = data.videos.filter(video => metricBucket(video) !== "ok").length;
+    const pendingReview = reports.filter(report => ["sent","review","observed"].includes(report.status)).length;
+    $("#content").innerHTML = `<section class="admin-command-hero admin-command-hero-v280"><div><span class="reports-kicker">${selectedPeriod?.is_active?"PERÍODO ACTIVO":"PERÍODO"}</span><h2>${esc(selectedPeriod?.name||periodRangeLabel(selectedPeriod)||state.adminWeek)}</h2><div class="admin-hero-stats-v280"><span><b>${reports.length}</b> cliperos</span><span><b>${data.videos.length}</b> videos</span><span><b>${num(totalViews)}</b> vistas</span><span><b>${money(projected)}</b> proyectado</span></div></div><div class="admin-home-tools-v280"><label class="period-select-v224">${uiIcon("history",14)}<select id="reportPeriodSelect">${periods.map(period=>`<option value="${period.start_date}" ${period.start_date===state.adminWeek?"selected":""}>${esc(period.name||periodRangeLabel(period))}${period.is_active?" · ACTIVO":""}</option>`).join("")}</select></label><button id="goAdminMetricsV280" class="btn btn-secondary btn-sm">${uiIcon("activity",14)} ${metricIssues}</button><button id="exportReportsBtnV280" class="btn btn-secondary btn-sm">${uiIcon("report",14)} Excel</button></div></section>
+      <section class="admin-ops-strip-v280"><span><b>${pendingReview}</b><small>por evaluar</small></span><span><b>${metricIssues}</b><small>métricas</small></span><span><b>${reports.filter(r=>r.status==="paid").length}</b><small>pagados</small></span></section>
+      ${adminPlatformOverviewV280(data.videos)}
+      <section class="card report-list-card-v224 executive-report-list admin-evaluation-v280"><div class="report-list-head-v224"><div><span class="section-eyebrow">CONTROL ADMINISTRATIVO</span><h2>Evaluación de cliperos</h2></div><span class="report-live-note"><i></i> En vivo</span></div>${adminReportsTable(reports)}</section>`;
+    $("#reportPeriodSelect")?.addEventListener("change",event=>{state.adminWeek=event.target.value;state.adminVideoData=null;renderAdminReportsV240();});
+    $("#goAdminMetricsV280")?.addEventListener("click",()=>navigate("metrics"));
+    $("#exportReportsBtnV280")?.addEventListener("click",()=>exportWeeklyExcel(reports));
+    bindAdminReportButtons();
+    animateDynamicNumbers($("#content"));
+  }
+
+  function clipperMotivationMarkupV280(motivation) {
+    if (!motivation) return "";
+    const rank = Number(motivation.my_rank || 0);
+    const total = Number(motivation.total_clippers || 0);
+    const topAccount = motivation.top_account_name || "Cuenta destacada";
+    const topPlatform = motivation.top_account_platform || "tiktok";
+    const viralUrl = motivation.viral_video_url || "";
+    const viral = viralUrl ? `<a class="motivation-card-v280 motivation-viral-v280" href="${esc(viralUrl)}" target="_blank" rel="noopener"><span>${uiIcon("video",18)}</span><div><small>VIDEO MÁS VIRAL</small><strong>${esc(motivation.viral_video_title || "Ver video")}</strong><em>${esc(motivation.viral_video_account_name || "Cuenta")} · ${num(motivation.viral_video_views || 0)} vistas</em></div>${uiIcon("arrow",15)}</a>` : "";
+    return `<section class="clipper-motivation-v280"><article class="motivation-card-v280 motivation-rank-v280"><span class="motivation-icon-v280">🏁</span><div><small>TU POSICIÓN</small><strong>${rank ? `#${rank}` : "—"}${total ? ` de ${total}` : ""}</strong><em>${esc(motivation.my_account_name || "Tu cuenta")}</em></div></article><article class="motivation-card-v280 motivation-top-v280"><span class="motivation-icon-v280">🏆</span><div><small>TOP DEL PERÍODO</small><strong>${esc(topAccount)}</strong><em>${platformLabel(topPlatform)} · ${num(motivation.top_account_views || 0)} vistas</em></div></article>${viral}</section>`;
+  }
+
+  function clipperAccountCardsV280(rows = []) {
+    if (!rows.length) return clipperPlatformProgressCards();
+    return `<div class="clipper-account-grid-v280">${rows.map(row => {
+      const progress = row.cap_enabled ? clamp((Number(row.views||0)/Math.max(Number(row.cap_views||1),1))*100,0,100) : clamp(platformProgressRaw(normalizedPlatformRow(row.platform,{platform:row.platform,views:row.views})),0,100);
+      return `<article class="clipper-account-card-v280 account-${row.platform}"><div class="clipper-account-head-v280">${platformBadge(row.platform,true)}<span>${row.video_count} videos</span></div><strong>${esc(row.account_name || platformLabel(row.platform))}</strong><div class="clipper-account-numbers-v280"><span><b>${num(row.views)}</b><small>vistas</small></span><span><b>${money(row.final_pay)}</b><small>pago</small></span></div>${row.cap_enabled?`<div class="network-target-progress"><span style="width:${progress}%"></span></div><small class="clipper-cap-note-v280">Máx. ${money(row.cap_amount)} · ${num(row.cap_views)} vistas${row.cap_reached?" · TOPE ALCANZADO":""}</small>`:""}</article>`;
+    }).join("")}</div>`;
+  }
+
+  async function renderClipperDashboard() {
+    const s = state.currentSummary;
+    const editable = reportEditable(s);
+    const deadlinePassed = s?.submission_deadline && Date.now() > new Date(s.submission_deadline).getTime();
+    const [accountPayments,motivation] = await Promise.all([fetchAccountPaymentsV280(state.currentReportId),fetchClipperMotivationV280()]);
+    const fallbackAccount = activeAccounts()[0];
+    const accountName = motivation?.my_account_name || fallbackAccount?.account_name || "Mi cuenta";
+    const basePay = accountPayments.length ? accountPayments.reduce((sum,row)=>sum+Number(row.final_pay||0),0) : clipperRegisteredPlatforms().reduce((sum,platform)=>sum+uncappedPlatformPay(normalizedPlatformRow(platform,Object.fromEntries((state.platformSummary||[]).map(row=>[row.platform,row]))[platform])),0);
+    const capActive = accountPayments.some(row=>row.cap_enabled);
+    setHeader("Mi período", `${periodRangeLabel(s)} · ${s?.video_count||0} videos`);
+    $("#content").innerHTML = `<section class="creator-overview-v234 creator-overview-v280"><div class="creator-overview-user"><button id="quickProfilePhoto" class="creator-photo-button" type="button" title="Cambiar foto de perfil">${profileAvatarMarkup(state.profile,"medium")}<i>+</i></button><div><span><i></i> ${deadlinePassed?"CERRADO":"EN VIVO"}</span><strong>${esc(accountName)}</strong><small>${dateOnlyLabel(s?.week_end)} · ${activeAccounts().length} cuenta${activeAccounts().length===1?"":"s"}</small></div></div><div class="creator-overview-pay"><small>PAGO ESTIMADO</small><strong>${money(basePay)}</strong><span>${capActive?"Techo por cuenta activo":"Pago proporcional"}</span></div></section>
+      ${clipperMotivationMarkupV280(motivation)}
+      <section class="network-progress-section network-progress-section-v234"><div class="section-title-row"><div><span class="section-eyebrow">MIS CUENTAS</span><h3>Rendimiento</h3></div><button id="goNetworksBtn" class="btn btn-ghost btn-sm">${uiIcon("network",14)} Redes</button></div>${clipperAccountCardsV280(accountPayments)}</section>
+      <div class="clipper-action-strip clipper-action-strip-v234 clipper-action-strip-v280"><div class="clipper-action-primary"><div><span>VIDEOS</span><h3>${editable?"Agregar contenido":"Período cerrado"}</h3></div><button id="quickAddBtn" class="btn btn-primary" ${!editable?"disabled":""}>${uiIcon("plus")} Agregar</button></div><div class="auto-submit-card-v234">${uiIcon("check",16)}<div><strong>Entrega automática</strong><small>${deadlinePassed?"Enviado":dateTimeLabel(s?.submission_deadline)}</small></div></div></div>
+      <section class="card compact-card recent-content-card recent-content-card-v234"><div class="card-head"><div><h2>Recientes</h2></div><div class="actions"><button id="refreshMyMetricsBtn" class="btn btn-secondary btn-sm">${uiIcon("sync",14)} Métricas</button><button id="viewVideosBtn" class="btn btn-ghost btn-sm">Todos ${uiIcon("arrow",14)}</button></div></div>${recentVideoCards(state.videos)}</section>`;
+    $("#quickAddBtn")?.addEventListener("click",handleQuickRegisterAction);
+    $("#quickProfilePhoto")?.addEventListener("click",()=>navigate("profile"));
+    $("#viewVideosBtn")?.addEventListener("click",()=>{state.videoFilterPlatform="all";navigate("videos");});
+    $("#refreshMyMetricsBtn")?.addEventListener("click",async()=>{showLoading(true);try{await runLiveMetricSync(false);await loadClipperCurrentData();await renderClipperDashboard();}finally{showLoading(false);}});
+    $("#goNetworksBtn")?.addEventListener("click",()=>navigate("networks"));
+    animateDynamicNumbers($("#content"));
+  }
+
+  async function renderAdminPayments() {
+    setHeader("Pagos","Control del período");
+    const start = state.activePeriod?.start_date || currentWeekStartISO();
+    const reportsRaw = await query(state.supabase.from("weekly_report_summary").select("*").eq("week_start",start).order("names"));
+    const reports = [...(reportsRaw||[])].sort((a,b)=>`${a.names||""} ${a.surnames||""}`.trim().localeCompare(`${b.names||""} ${b.surnames||""}`.trim(),"es",{sensitivity:"base"}));
+    const ids = reports.map(r=>r.report_id);
+    const [platformRows,totalRows,accountRows] = await Promise.all([
+      ids.length ? query(state.supabase.from("weekly_report_platform_summary").select("*").in("report_id",ids)) : Promise.resolve([]),
+      fetchAdminPeriodPaymentTotalsV280(start),
+      fetchAdminPeriodAccountPaymentsV280(start),
+    ]);
+    state.adminPlatformRows = platformRows || [];
+    state.paymentTotalsV280 = Object.fromEntries((totalRows||[]).map(row=>[row.report_id,row]));
+    const total = reports.reduce((sum,r)=>sum+reportDisplayTotal(r),0);
+    const paid = reports.filter(r=>r.status==="paid");
+    const missing = reports.filter(r=>!r.payment_account);
+    const capActive = accountRows.some(row=>row.cap_enabled);
+    $("#content").innerHTML = `<div class="grid grid3 compact-kpis mobile-two-columns payment-kpis-v270">${kpi("Proyectado",money(total),capActive?"Techo por cuenta activo":"Pago proporcional")}${kpi("Pagados",paid.length,`${reports.length-paid.length} pendientes`)}${kpi("Sin datos",missing.length,"Datos de pago")}</div><div class="card compact-card payment-shell-v270" style="margin-top:12px"><div class="card-head"><div><h2>Pagos</h2><p>${reports.length} cliperos · A–Z</p></div>${capActive?'<span class="pill pill-green">TECHO ACTIVO</span>':'<span class="chip">SIN TECHO</span>'}</div><div class="payment-grid payment-grid-v234 payment-grid-v270">${reports.map(r=>{const detail=accountRows.filter(row=>row.report_id===r.report_id).sort((a,b)=>String(a.account_name||"").localeCompare(String(b.account_name||""),"es"));const base=state.paymentTotalsV280?.[r.report_id]?.base_pay??reportUncappedBase(r);const fallback=platformRowsForReport(r.report_id).filter(row=>row.pay_enabled!==false);const list=detail.length?detail.map(row=>`<div>${platformLogo(row.platform)}<span>${esc(row.account_name||platformLabel(row.platform))}</span><b>${num(row.views)} vistas</b><strong>${money(row.final_pay)}${row.cap_reached?' <i class="cap-mini-v280">TOPE</i>':""}</strong></div>`).join(""):fallback.map(row=>`<div>${platformLogo(row.platform)}<span>${platformLabel(row.platform)}</span><b>${num(row.views)} vistas</b><strong>${money(uncappedPlatformPay(row))}</strong></div>`).join("");return `<div class="payment-card payment-card-v234 payment-card-v270"><div class="payment-card-head"><div><strong>${esc(`${r.names||r.username||""} ${r.surnames||""}`.trim())}</strong><small>@${esc(r.username)}</small></div>${statusBadge(r.status)}</div><div class="payment-network-list-v234 payment-network-list-v270">${list||'<small class="muted">Sin cuentas remuneradas</small>'}</div><div class="payment-breakdown payment-breakdown-v270"><div><span>Base</span><b>${money(base)}</b></div><div><span>Bono</span><b>${money(r.bonus_pay||0)}</b></div><div><span>Total</span><b>${money(reportDisplayTotal(r))}</b></div></div><div class="payment-account-row payment-account-row-v270"><div><span>${paymentMethodLabel(r.payment_method)}</span><b>${r.payment_account?esc(r.payment_account):"Pendiente"}</b></div><div class="actions">${r.payment_account?`<button class="btn btn-ghost btn-sm" data-copy-pay="${esc(r.payment_account)}">Copiar</button>`:""}<button class="btn btn-secondary btn-sm" data-admin-report="${r.report_id}">Evaluar</button></div></div></div>`;}).join("")||'<div class="empty">Sin reportes.</div>'}</div></div>`;
+    $$('[data-copy-pay]').forEach(b=>b.addEventListener("click",()=>copyText(b.dataset.copyPay)));
+    bindAdminReportButtons();
+  }
+
+  async function renderAdminSettings() {
+    await renderAdminSettingsV280Base();
+    const pane = $('[data-settings-pane="payments"]');
+    if (!pane) return;
+    const cfg = await fetchPaymentCapConfigV280(null);
+    const enabled = cfg?.global_enabled ?? true;
+    const views = Number(cfg?.global_cap_views || 250000);
+    const amount = Number(cfg?.global_cap_amount || 300);
+    pane.insertAdjacentHTML("afterbegin",`<div class="settings-group-card payment-cap-card-v280"><div class="settings-group-title"><div><h3>Techo por cuenta</h3><p>Una cuenta deja de aumentar al llegar al máximo.</p></div><span class="pill ${enabled?"pill-green":"pill-yellow"}">${enabled?"ACTIVO":"APAGADO"}</span></div><form id="globalPaymentCapFormV280" class="payment-cap-form-v280"><label class="setting-switch"><input name="enabled" type="checkbox" ${enabled?"checked":""}><div><b>Aplicar a todos</b><span>Cada clipero puede tener una excepción individual.</span></div></label><label>Vistas para llegar al máximo<input name="cap_views" type="number" min="1" value="${views}"></label><label>Pago máximo por cuenta S/<input name="cap_amount" type="number" min="0" step="0.01" value="${amount}"></label><div class="cap-example-v280"><b>${num(views)} vistas = ${money(amount)} máximo</b><span>Si una cuenta supera esa cifra, el pago de esa cuenta no aumenta.</span></div><button class="btn btn-primary">Guardar techo</button></form>${cfg?"":'<div class="alert alert-warning compact-alert" style="margin-top:10px"><div>⚙</div><div><strong>Falta instalar SQL 28</strong><p>El diseño funciona, pero el techo no se aplicará hasta ejecutar el SQL incluido.</p></div></div>'}</div>`);
+    $("#globalPaymentCapFormV280")?.addEventListener("submit",async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));try{await query(state.supabase.rpc("admin_set_global_payment_cap_v280",{p_enabled:f.enabled==="on",p_cap_views:Number(f.cap_views),p_cap_amount:Number(f.cap_amount)}));toast("Techo de pago actualizado","success");await renderAdminSettings();}catch(error){toast(errorMessage(error),"error");}});
+  }
+
+  function renderAdminRulesTab(profile,rules) {
+    renderAdminRulesTabV280Base(profile,rules);
+    if (state.selectedClipperTab !== "rules") return;
+    const box = $("#clipperTabContent");
+    if (!box) return;
+    (async()=>{
+      const cfg = await fetchPaymentCapConfigV280(profile.id);
+      const mode = cfg?.mode || "inherit";
+      const views = Number(cfg?.override_cap_views || cfg?.effective_cap_views || cfg?.global_cap_views || 250000);
+      const amount = Number(cfg?.override_cap_amount || cfg?.effective_cap_amount || cfg?.global_cap_amount || 300);
+      box.insertAdjacentHTML("beforeend",`<div class="settings-group-card clipper-cap-override-v280" style="margin-top:12px"><div class="settings-group-title"><div><h3>Techo de pago</h3><p>Excepción solo para este clipero.</p></div><span class="chip">POR CUENTA</span></div><form id="clipperCapFormV280" class="form-grid compact-form"><label>Modo<select name="mode"><option value="inherit" ${mode==="inherit"?"selected":""}>Usar configuración general</option><option value="enabled" ${mode==="enabled"?"selected":""}>Activar para este clipero</option><option value="disabled" ${mode==="disabled"?"selected":""}>Desactivar para este clipero</option></select></label><label>Vistas máximo<input name="cap_views" type="number" min="1" value="${views}"></label><label>Pago máximo S/<input name="cap_amount" type="number" min="0" step="0.01" value="${amount}"></label><div class="full actions"><button class="btn btn-primary">Guardar techo</button><button type="button" id="clipperCapResetV280" class="btn btn-ghost">Usar general</button></div></form>${cfg?"":'<small class="muted">Ejecuta SQL 28 para activar esta función.</small>'}</div>`);
+      $("#clipperCapFormV280")?.addEventListener("submit",async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));try{await query(state.supabase.rpc("admin_set_clipper_payment_cap_v280",{p_user_id:profile.id,p_mode:f.mode,p_cap_views:Number(f.cap_views),p_cap_amount:Number(f.cap_amount)}));toast("Techo individual guardado","success");renderAdminRulesTab(profile,rules);}catch(error){toast(errorMessage(error),"error");}});
+      $("#clipperCapResetV280")?.addEventListener("click",async()=>{try{await query(state.supabase.rpc("admin_set_clipper_payment_cap_v280",{p_user_id:profile.id,p_mode:"inherit",p_cap_views:null,p_cap_amount:null}));toast("Usará el techo general","success");renderAdminRulesTab(profile,rules);}catch(error){toast(errorMessage(error),"error");}});
+    })();
+  }
+
+
+  // ========================================================================
+  // ClipControl 3.0.0 · ADMIN LIMPIO + CLIPERO MOTIVACIONAL
+  // Solo redistribución/UX. No toca Edge Function ni el motor de métricas.
+  // ========================================================================
+
+  function principalAccountLabelV300(account) {
+    if (!account) return "Cuenta";
+    return String(account.account_name || account.social_alias || platformLabel(account.platform) || "Cuenta").trim();
+  }
+
+  function adminVideoCard(video, selectable = false) {
+    const youtubeId = youtubeVideoIdFromUrl(video.video_url);
+    const rawThumb = video.thumbnail_url || (youtubeId ? `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg` : "");
+    const thumb = video.platform === "facebook" && facebookCdnThumbnailExpired(rawThumb) ? "" : rawThumb;
+    const fallback = `<span class="video-row-fallback">${platformLogo(video.platform)}</span>`;
+    const preview = thumb ? `<img src="${esc(thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">${fallback}` : fallback;
+    const checkbox = selectable ? `<label class="video-row-check" title="Seleccionar"><input type="checkbox" data-metric-select="${video.id}" ${state.metricSelected?.has(video.id)?"checked":""}><span></span></label>` : "";
+    const title = video.external_title || `Video ${video.position || ""}`;
+    const urlLabel = String(video.video_url || "").replace(/^https?:\/\//i, "");
+    return `<article class="global-video-card global-video-row metric-card-${metricBucket(video)}">
+      ${checkbox}
+      <a class="video-row-thumb" href="${esc(video.video_url)}" target="_blank" rel="noopener" title="Abrir video">${preview}<span class="video-row-platform">${platformLogo(video.platform)}</span></a>
+      <div class="video-row-main"><div class="video-row-title"><a href="${esc(video.video_url)}" target="_blank" rel="noopener" title="${esc(title)}">${esc(title)}</a>${metricBucketBadge(video)}</div><p>${esc(video.clipper_name)} · ${esc(video.account_name)} · ${esc(platformLabel(video.platform))}</p><a class="video-row-url" href="${esc(video.video_url)}" target="_blank" rel="noopener" title="${esc(video.video_url)}">${esc(urlLabel)}</a></div>
+      <div class="video-row-metric"><span>Vistas</span><b>${num(video.views)}</b></div>
+      <div class="video-row-metric"><span>Likes</span><b>${num(video.likes)}</b></div>
+      <div class="video-row-metric"><span>Coment.</span><b>${num(video.comments)}</b></div>
+      <div class="video-row-metric"><span>Comp.</span><b>${num(video.shares)}</b></div>
+      <div class="video-row-state">${video.metrics_error ? `<span class="video-row-warning" title="${esc(video.metrics_error)}">${uiIcon("alert",13)} ${esc(video.metrics_error)}</span>` : `<span class="video-row-source">${uiIcon("check",13)} ${esc(metricAvailabilityLabel(video) || "Verificada")}</span>`}</div>
+      <div class="video-row-actions"><a class="btn btn-ghost btn-sm" href="${esc(video.video_url)}" target="_blank" rel="noopener">Abrir</a><button class="btn btn-secondary btn-sm" data-admin-report="${video.report_id}">Reporte</button></div>
+    </article>`;
+  }
+
+  function adminLeaderVideosV300(videos = [], accountMap = {}) {
+    const top = [...videos].sort((a,b)=>Number(b.views||0)-Number(a.views||0) || Number(b.likes||0)-Number(a.likes||0)).slice(0,5);
+    if (!top.length) return "";
+    return `<section class="card admin-leaders-v300"><div class="admin-section-head-v300"><div><span class="section-eyebrow">RENDIMIENTO</span><h2>Videos líderes</h2></div><small>Más virales del período</small></div><div class="admin-leader-list-v300">${top.map((video,index)=>{
+      const account = accountMap[video.account_id] || {};
+      const accountName = principalAccountLabelV300(account) || video.account_name || platformLabel(video.platform);
+      const youtubeId = youtubeVideoIdFromUrl(video.video_url);
+      const rawThumb = video.thumbnail_url || (youtubeId ? `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg` : "");
+      const thumb = video.platform === "facebook" && facebookCdnThumbnailExpired(rawThumb) ? "" : rawThumb;
+      return `<a class="admin-leader-row-v300" href="${esc(video.video_url)}" target="_blank" rel="noopener"><span class="leader-rank-v300">${index+1}</span><span class="leader-thumb-v300">${thumb?`<img src="${esc(thumb)}" alt="" loading="lazy" onerror="this.remove()">`:platformLogo(video.platform)}</span><span class="leader-copy-v300"><b>${esc(video.external_title || `Video ${video.position || ""}`)}</b><small>${platformLogo(video.platform)} ${esc(accountName)}</small></span><strong>${num(video.views)}</strong><i>${uiIcon("arrow",14)}</i></a>`;
+    }).join("")}</div></section>`;
+  }
+
+  async function renderAdminReportsV300() {
+    setHeader("Inicio", "Control del período");
+    try { await state.supabase.rpc("clipcontrol_auto_submit_due_reports_v234"); } catch (_) {}
+    const periods = await query(state.supabase.from("reporting_periods").select("*").order("start_date",{ascending:false}).limit(20));
+    if (!state.adminWeek) state.adminWeek = state.activePeriod?.start_date || periods?.[0]?.start_date || currentWeekStartISO();
+    const reports = await query(state.supabase.from("weekly_report_summary").select("*").eq("week_start",state.adminWeek).order("total_views",{ascending:false}));
+    const reportIds = reports.map(report => report.report_id);
+    const [platformRows,data,paymentRules,paymentTotals] = await Promise.all([
+      reportIds.length ? query(state.supabase.from("weekly_report_platform_summary").select("*").in("report_id",reportIds)) : Promise.resolve([]),
+      loadAdminVideoCenterData(reports,true),
+      query(state.supabase.from("platform_payment_rules").select("*")).catch(()=>[]),
+      fetchAdminPeriodPaymentTotalsV280(state.adminWeek),
+    ]);
+    state.adminReportIds = reportIds;
+    state.adminPlatformRows = platformRows || [];
+    state.platformRuleMap = Object.fromEntries((paymentRules||[]).map(rule => [rule.platform,rule]));
+    state.paymentTotalsV280 = Object.fromEntries((paymentTotals||[]).map(row => [row.report_id,row]));
+    state.adminRegisteredPlatformsByUser = {};
+    for (const account of data.accounts || []) {
+      if (!state.adminRegisteredPlatformsByUser[account.user_id]) state.adminRegisteredPlatformsByUser[account.user_id] = [];
+      if (account.active !== false && !state.adminRegisteredPlatformsByUser[account.user_id].includes(account.platform)) state.adminRegisteredPlatformsByUser[account.user_id].push(account.platform);
+    }
+    const selectedPeriod = periods.find(period => period.start_date === state.adminWeek);
+    const totalViews = data.videos.reduce((sum,video) => sum + Number(video.views||0),0);
+    const projected = reports.reduce((sum,report) => sum + reportDisplayTotal(report),0);
+    const accountMap = Object.fromEntries((data.accounts||[]).map(account=>[account.id,account]));
+
+    $("#content").innerHTML = `<section class="admin-command-hero admin-command-hero-v300"><div><span class="reports-kicker">${selectedPeriod?.is_active?"PERÍODO EN VIVO":"PERÍODO"}</span><h2>${esc(selectedPeriod?.name||periodRangeLabel(selectedPeriod)||state.adminWeek)}</h2><div class="admin-hero-stats-v300"><span><b>${reports.length}</b> cliperos</span><span><b>${data.videos.length}</b> videos</span><span><b>${num(totalViews)}</b> vistas</span><span><b>${money(projected)}</b> proyectado</span></div></div><div class="admin-home-tools-v300"><label class="period-select-v224">${uiIcon("history",14)}<select id="reportPeriodSelect">${periods.map(period=>`<option value="${period.start_date}" ${period.start_date===state.adminWeek?"selected":""}>${esc(period.name||periodRangeLabel(period))}${period.is_active?" · ACTIVO":""}</option>`).join("")}</select></label><button id="exportReportsBtnV300" class="icon-action" type="button" title="Exportar reporte segmentado">${uiIcon("report",16)}</button></div></section>
+      ${adminPlatformOverviewV280(data.videos)}
+      ${adminLeaderVideosV300(data.videos,accountMap)}
+      <section class="card report-list-card-v224 executive-report-list admin-evaluation-v300"><div class="report-list-head-v224"><div><span class="section-eyebrow">OPERACIÓN</span><h2>Evaluación de cliperos</h2></div><span class="report-live-note"><i></i> En vivo</span></div>${adminReportsTable(reports)}</section>`;
+    $("#reportPeriodSelect")?.addEventListener("change",event=>{state.adminWeek=event.target.value;state.adminVideoData=null;renderAdminReportsV300();});
+    $("#exportReportsBtnV300")?.addEventListener("click",()=>exportWeeklyExcel(reports));
+    bindAdminReportButtons();
+    animateDynamicNumbers($("#content"));
+  }
+
+  async function renderAdminVideoCenterV300(force = false) {
+    setHeader("Videos", "Buscar y ordenar");
+    const data = await loadAdminVideoCenterData(null, force);
+    state.videoCenterFilters = state.videoCenterFilters || { search:"", clipper:"all", account:"all", platform:"all", status:"all", sort:"views_desc" };
+    const filters = state.videoCenterFilters;
+    const sortVideos = rows => [...rows].sort((a,b)=>{
+      if(filters.sort==="recent") return new Date(b.created_at||0)-new Date(a.created_at||0);
+      if(filters.sort==="oldest") return new Date(a.created_at||0)-new Date(b.created_at||0);
+      return Number(b.views||0)-Number(a.views||0) || Number(b.likes||0)-Number(a.likes||0);
+    });
+    const visible = sortVideos(adminVideoFilterRows(data.videos,filters));
+    const uniqueClippers = [...new Map(data.videos.map(video=>[video.user_id,{id:video.user_id,name:video.clipper_name,username:video.username}])).values()].sort((a,b)=>a.name.localeCompare(b.name,"es"));
+    const availableAccounts = data.accounts.filter(account=>filters.clipper==="all"||account.user_id===filters.clipper);
+    $("#content").innerHTML = `<section class="compact-page-head-v300"><div><h2>${data.videos.length} videos</h2><span>${num(data.videos.reduce((s,v)=>s+Number(v.views||0),0))} vistas</span></div><button id="refreshVideoCenter" class="icon-action" title="Recargar">${uiIcon("sync",15)}</button></section>
+      <section class="video-filter-shell video-filter-shell-v300"><div class="video-search-control">${uiIcon("activity",15)}<input id="globalVideoSearch" value="${esc(filters.search)}" placeholder="Buscar título, link, clipero, cuenta o red"></div><select id="globalClipperFilter"><option value="all">Cliperos</option>${uniqueClippers.map(item=>`<option value="${item.id}" ${filters.clipper===item.id?"selected":""}>${esc(item.name)}</option>`).join("")}</select><select id="globalAccountFilter"><option value="all">Cuentas</option>${availableAccounts.map(account=>`<option value="${account.id}" ${filters.account===account.id?"selected":""}>${esc(account.account_name)}</option>`).join("")}</select><select id="globalPlatformFilter"><option value="all">Redes</option>${Object.keys(PLATFORMS).map(platform=>`<option value="${platform}" ${filters.platform===platform?"selected":""}>${esc(platformLabel(platform))}</option>`).join("")}</select><select id="globalMetricFilter"><option value="all">Estados</option>${["ok","partial","error","syncing","pending"].map(status=>`<option value="${status}" ${filters.status===status?"selected":""}>${metricBucketLabel(status)}</option>`).join("")}</select><select id="globalSortFilter"><option value="views_desc" ${filters.sort==="views_desc"?"selected":""}>Más virales</option><option value="recent" ${filters.sort==="recent"?"selected":""}>Más recientes</option><option value="oldest" ${filters.sort==="oldest"?"selected":""}>Más antiguos</option></select></section>
+      <div class="filter-result-line"><span><b>${visible.length}</b> resultados</span>${Object.entries(filters).some(([k,v])=>k!=="sort"&&v&&v!=="all")?'<button id="clearVideoFilters" class="btn btn-ghost btn-sm">Limpiar</button>':""}</div>
+      <section class="global-video-grid global-video-list global-video-list-v300">${visible.map(video=>adminVideoCard(video)).join("")||'<div class="empty global-empty">Sin resultados.</div>'}</section>`;
+    const rerender=()=>renderAdminVideoCenterV300(false);
+    $("#globalVideoSearch")?.addEventListener("input",debounce(e=>{filters.search=e.target.value;rerender();},220));
+    [["globalClipperFilter","clipper"],["globalAccountFilter","account"],["globalPlatformFilter","platform"],["globalMetricFilter","status"],["globalSortFilter","sort"]].forEach(([id,key])=>$("#"+id)?.addEventListener("change",e=>{filters[key]=e.target.value;if(key==="clipper")filters.account="all";rerender();}));
+    $("#clearVideoFilters")?.addEventListener("click",()=>{state.videoCenterFilters={search:"",clipper:"all",account:"all",platform:"all",status:"all",sort:"views_desc"};rerender();});
+    $("#refreshVideoCenter")?.addEventListener("click",()=>renderAdminVideoCenterV300(true));
+    bindAdminVideoCards();
+  }
+
+  async function renderMetricInboxV300(force = false) {
+    setHeader("Métricas", "Incidencias y reintentos");
+    const data = await loadAdminVideoCenterData(null,force);
+    state.metricSelected = state.metricSelected || new Set();
+    state.metricFilters = state.metricFilters || {search:"",platform:"all",clipper:"all",status:"all"};
+    const baseIssues = data.videos.filter(video=>metricBucket(video)!=="ok");
+    const issues = adminVideoFilterRows(baseIssues,state.metricFilters).sort((a,b)=>Number(b.views||0)-Number(a.views||0)||Number(b.likes||0)-Number(a.likes||0));
+    const clippers = [...new Map(baseIssues.map(video=>[video.user_id,{id:video.user_id,name:video.clipper_name}])).values()].sort((a,b)=>a.name.localeCompare(b.name,"es"));
+    const errors=baseIssues.filter(v=>metricBucket(v)==="error").length, partial=baseIssues.filter(v=>metricBucket(v)==="partial").length, pending=baseIssues.filter(v=>["pending","syncing"].includes(metricBucket(v))).length;
+    $("#content").innerHTML = `<section class="metric-summary-v300"><span><b>${errors}</b> errores</span><span><b>${partial}</b> parciales</span><span><b>${pending}</b> pendientes</span></section>
+      <section class="metric-batch-bar metric-batch-bar-v300"><div class="video-search-control">${uiIcon("activity",14)}<input id="metricSearchInput" value="${esc(state.metricFilters.search||"")}" placeholder="Buscar título, link, clipero o cuenta"></div><select id="metricPlatformFilter"><option value="all">Redes</option>${Object.keys(PLATFORMS).map(p=>`<option value="${p}" ${state.metricFilters.platform===p?"selected":""}>${platformLabel(p)}</option>`).join("")}</select><select id="metricClipperFilter"><option value="all">Cliperos</option>${clippers.map(item=>`<option value="${item.id}" ${state.metricFilters.clipper===item.id?"selected":""}>${esc(item.name)}</option>`).join("")}</select><select id="metricStatusFilter"><option value="all">Incidencias</option>${["error","partial","pending","syncing"].map(s=>`<option value="${s}" ${state.metricFilters.status===s?"selected":""}>${metricBucketLabel(s)}</option>`).join("")}</select><button id="retrySelectedMetrics" class="btn btn-primary btn-sm">${uiIcon("sync",14)} Reintentar</button></section>
+      <div class="filter-result-line"><span><b>${issues.length}</b> visibles · <b id="metricSelectedCount">${state.metricSelected.size}</b> seleccionadas</span><div class="actions"><button id="selectVisibleMetrics" class="btn btn-ghost btn-sm">Seleccionar visibles</button><button id="retryAllIssues" class="btn btn-secondary btn-sm">Reintentar visibles</button></div></div>
+      <section class="global-video-grid global-video-list metric-inbox-grid global-video-list-v300">${issues.map(video=>adminVideoCard(video,true)).join("")||'<div class="metric-clean-state"><span>✓</span><h3>Todo limpio</h3></div>'}</section>`;
+    const rerender=()=>renderMetricInboxV300(false);
+    $("#metricSearchInput")?.addEventListener("input",debounce(e=>{state.metricFilters.search=e.target.value;rerender();},220));
+    [["metricPlatformFilter","platform"],["metricClipperFilter","clipper"],["metricStatusFilter","status"]].forEach(([id,key])=>$("#"+id)?.addEventListener("change",e=>{state.metricFilters[key]=e.target.value;rerender();}));
+    $$('[data-metric-select]').forEach(input=>input.addEventListener("change",()=>{input.checked?state.metricSelected.add(input.dataset.metricSelect):state.metricSelected.delete(input.dataset.metricSelect);$("#metricSelectedCount").textContent=state.metricSelected.size;}));
+    $("#selectVisibleMetrics")?.addEventListener("click",()=>{issues.forEach(v=>state.metricSelected.add(v.id));rerender();});
+    $("#retrySelectedMetrics")?.addEventListener("click",()=>retryMetricBatch([...state.metricSelected]));
+    $("#retryAllIssues")?.addEventListener("click",()=>retryMetricBatch(issues.map(v=>v.id)));
+    bindAdminVideoCards();
+  }
+
+  function clipperMotivationMarkupV300(motivation) {
+    if (!motivation) return "";
+    const rank=Number(motivation.my_rank||0), total=Number(motivation.total_clippers||0);
+    const topPlatform=motivation.top_account_platform||"tiktok";
+    const viralUrl=motivation.viral_video_url||"";
+    return `<section class="clipper-motivation-v300"><article><span>🏁</span><div><small>TU POSICIÓN</small><strong>${rank?`#${rank}${total?` / ${total}`:""}`:"—"}</strong><em>${esc(motivation.my_account_name||"Tu cuenta")}</em></div></article><article><span>🏆</span><div><small>CUENTA TOP</small><strong>${esc(motivation.top_account_name||"—")}</strong><em>${platformLogo(topPlatform)} ${num(motivation.top_account_views||0)} vistas</em></div></article>${viralUrl?`<a href="${esc(viralUrl)}" target="_blank" rel="noopener"><span>🔥</span><div><small>VIDEO MÁS VIRAL</small><strong>${esc(motivation.viral_video_title||"Ver video")}</strong><em>${esc(motivation.viral_video_account_name||"Cuenta")} · ${num(motivation.viral_video_views||0)}</em></div>${uiIcon("arrow",14)}</a>`:""}</section>`;
+  }
+
+  async function renderClipperDashboardV300() {
+    setHeader("Inicio", "Tu período");
+    const s=state.currentSummary;
+    const [accountPayments,motivation]=await Promise.all([fetchAccountPaymentsV280(state.currentReportId),fetchClipperMotivationV280()]);
+    const fallbackAccount=activeAccounts()[0];
+    const accountName=motivation?.my_account_name||fallbackAccount?.account_name||"Mi cuenta";
+    const basePay=accountPayments.length?accountPayments.reduce((sum,row)=>sum+Number(row.final_pay||0),0):Number(s?.calculated_base_pay||0);
+    const editable=reportEditable(s);
+    const deadlinePassed=s?.submission_deadline&&Date.now()>new Date(s.submission_deadline).getTime();
+    const videos=[...state.videos].sort((a,b)=>Number(b.views||0)-Number(a.views||0)).slice(0,5);
+    const accountMap=Object.fromEntries(state.accounts.map(a=>[a.id,a]));
+    $("#content").innerHTML=`<section class="creator-overview-v300"><div><span>${deadlinePassed?"CERRADO":"● EN VIVO"}</span><h2>${esc(accountName)}</h2><small>${state.videos.length} videos · ${num(state.videos.reduce((sum,v)=>sum+Number(v.views||0),0))} vistas</small></div><div><small>PAGO ESTIMADO</small><strong>${money(basePay)}</strong></div></section>
+      ${clipperMotivationMarkupV300(motivation)}
+      ${clipperAccountCardsV280(accountPayments)}
+      <section class="card clipper-home-actions-v300"><button id="quickAddBtn" class="btn btn-primary" ${!editable?"disabled":""}>${uiIcon("plus",14)} Agregar videos</button><button id="viewVideosBtn" class="btn btn-secondary">Mis videos</button><button id="refreshMyMetricsBtn" class="btn btn-ghost">${uiIcon("sync",14)} Actualizar</button></section>
+      <section class="card clipper-top-videos-v300"><div class="admin-section-head-v300"><div><span class="section-eyebrow">TU RENDIMIENTO</span><h2>Mejores videos</h2></div></div><div class="clipper-top-list-v300">${videos.map((video,index)=>`<a href="${esc(video.video_url)}" target="_blank" rel="noopener"><span>${index+1}</span><div><b>${esc(video.external_title||`Video ${video.position||""}`)}</b><small>${esc(accountMap[video.account_id]?.account_name||platformLabel(video.platform))}</small></div><strong>${num(video.views)}</strong></a>`).join("")||'<div class="empty">Aún sin videos.</div>'}</div></section>`;
+    $("#quickAddBtn")?.addEventListener("click",handleQuickRegisterAction);
+    $("#viewVideosBtn")?.addEventListener("click",()=>navigate("videos"));
+    $("#refreshMyMetricsBtn")?.addEventListener("click",async()=>{showLoading(true);try{await runLiveMetricSync(false);await loadClipperCurrentData();await renderClipperDashboardV300();}finally{showLoading(false);}});
+    animateDynamicNumbers($("#content"));
+  }
+
+  async function renderAdminPaymentsV300() {
+    setHeader("Pagos","Orden alfabético");
+    const start=state.activePeriod?.start_date||currentWeekStartISO();
+    const reportsRaw=await query(state.supabase.from("weekly_report_summary").select("*").eq("week_start",start).order("names"));
+    const reports=[...(reportsRaw||[])].sort((a,b)=>`${a.names||""} ${a.surnames||""}`.trim().localeCompare(`${b.names||""} ${b.surnames||""}`.trim(),"es",{sensitivity:"base"}));
+    const ids=reports.map(r=>r.report_id);
+    const [platformRows,totalRows,accountRows]=await Promise.all([ids.length?query(state.supabase.from("weekly_report_platform_summary").select("*").in("report_id",ids)):Promise.resolve([]),fetchAdminPeriodPaymentTotalsV280(start),fetchAdminPeriodAccountPaymentsV280(start)]);
+    state.adminPlatformRows=platformRows||[];
+    state.paymentTotalsV280=Object.fromEntries((totalRows||[]).map(row=>[row.report_id,row]));
+    const total=reports.reduce((sum,r)=>sum+reportDisplayTotal(r),0), paid=reports.filter(r=>r.status==="paid").length, missing=reports.filter(r=>!r.payment_account).length;
+    $("#content").innerHTML=`<section class="payment-summary-v300"><span><small>PROYECTADO</small><b>${money(total)}</b></span><span><small>PAGADOS</small><b>${paid}/${reports.length}</b></span><span><small>SIN DATOS</small><b>${missing}</b></span></section><section class="payment-list-v300">${reports.map(r=>{const detail=accountRows.filter(row=>row.report_id===r.report_id).sort((a,b)=>String(a.account_name||"").localeCompare(String(b.account_name||""),"es"));const base=state.paymentTotalsV280?.[r.report_id]?.base_pay??reportUncappedBase(r);const accounts=detail.slice(0,4).map(row=>`<span>${platformLogo(row.platform)} ${esc(row.account_name||platformLabel(row.platform))}: <b>${money(row.final_pay)}</b>${row.cap_reached?' <i>TOPE</i>':""}</span>`).join("");return `<article class="payment-row-v300"><div class="payment-person-v300"><strong>${esc(`${r.names||r.username||""} ${r.surnames||""}`.trim())}</strong><small>@${esc(r.username||"")} · ${paymentMethodLabel(r.payment_method)} ${r.payment_account?`· ${esc(r.payment_account)}`:"· Sin datos"}</small></div><div class="payment-accounts-v300">${accounts||'<span class="muted">Sin cuentas remuneradas</span>'}</div><div class="payment-money-v300"><span><small>Base</small><b>${money(base)}</b></span><span><small>Bono</small><b>${money(r.bonus_pay||0)}</b></span><span><small>Total</small><strong>${money(reportDisplayTotal(r))}</strong></span></div><div class="payment-actions-v300">${statusBadge(r.status)}<button class="btn btn-secondary btn-sm" data-admin-report="${r.report_id}">Evaluar</button></div></article>`;}).join("")||'<div class="empty">Sin reportes.</div>'}</section>`;
+    bindAdminReportButtons();
+  }
+
+  // Reduce texto del modal administrativo sin quitar funciones.
+  function paymentFormulaNoteV280(rows = []) {
+    const capped = rows.some(row=>row.cap_enabled);
+    if (!rows.length) return "";
+    if (!capped) return `<div class="formula-box formula-box-v300"><b>Pago proporcional por cuenta</b></div>`;
+    const sample=rows.find(row=>row.cap_enabled)||rows[0];
+    return `<div class="formula-box formula-box-v300"><b>Tope: ${num(sample.cap_views)} vistas = ${money(sample.cap_amount)} por cuenta</b></div>`;
+  }
+
+  function adminAccountPaymentBreakdownV280(rows = []) {
+    if (!rows.length) return "";
+    return `<section class="account-pay-breakdown-v300"><div class="account-pay-grid-v300">${rows.map(row=>`<div>${platformLogo(row.platform)}<span><b>${esc(row.account_name||platformLabel(row.platform))}</b><small>${num(row.views)} vistas</small></span><strong>${money(row.final_pay)}</strong>${row.cap_reached?'<i>TOPE</i>':""}</div>`).join("")}</div></section>`;
+  }
+
   // La ultima capa gana sobre las versiones historicas conservadas en el archivo.
   function buildNav() { return buildNavV240(); }
-  async function renderAdminPage() { return renderAdminPageV240(); }
-  async function renderClipperPage() { return renderClipperPageV240(); }
-  async function renderAdminReports() { return renderAdminReportsV240(); }
+  async function renderAdminPage() {
+    if(state.page==="dashboard"||state.page==="reports") return renderAdminReportsV300();
+    if(state.page==="videos") return renderAdminVideoCenterV300();
+    if(state.page==="metrics") return renderMetricInboxV300();
+    if(state.page==="channel") return renderPublicYoutube();
+    if(state.page==="clippers") return state.selectedClipperId?renderClipperAdminDetail():renderAdminClippers();
+    if(state.page==="payments") return renderAdminPaymentsV300();
+    if(state.page==="announcements") return renderAdminAnnouncements();
+    if(state.page==="settings") return renderAdminSettings();
+    state.page="dashboard"; return renderAdminReportsV300();
+  }
+  async function renderClipperPage() {
+    if(["dashboard","videos","networks","channel"].includes(state.page)) await loadClipperCurrentData();
+    if(state.page==="dashboard") return renderClipperDashboardV300();
+    if(state.page==="videos") return renderClipperVideosV240();
+    if(state.page==="channel") return renderPublicYoutube();
+    if(state.page==="networks") return renderNetworks();
+    if(state.page==="history") return renderClipperHistory();
+    if(state.page==="profile") return renderProfilePage();
+    state.page="dashboard"; return renderClipperDashboardV300();
+  }
+  async function renderAdminReports() { return renderAdminReportsV300(); }
   function renderClipperVideos() { return renderClipperVideosV240(); }
 
   // Diagnóstico mínimo de infraestructura. Facebook ya no tiene una ruta especial.
+  window.clipcontrolDebugUI = () => ({version:CLIPCONTROL_FRONTEND_VERSION, ui:document.documentElement.dataset.clipcontrolUi, page:state.page, role:state.profile?.role});
   window.clipcontrolDebugYoutube = () => invokeProcessor({ action:"youtube_public_feed", limit:15 });
   window.clipcontrolDebugHealth = () => invokeProcessor({ action:"health" });
   window.clipcontrolDebugFacebook = (url) => invokeProcessor({ action:"facebook_probe", url });
@@ -4764,7 +5462,7 @@ ${sheet("Videos", [videoSheetHeaders, ...videoSheetRows])}
 
   window.clipcontrolDebugFrontend = () => ({
     version: CLIPCONTROL_FRONTEND_VERSION,
-    source: "app.js?v=2.6.6.20260816",
+    source: "app-v2.9.0.js",
     scripts: [...document.scripts].map((script) => script.src).filter(Boolean),
     samples: {
       facebook_reel: videoUrlValidation("https://www.facebook.com/reel/1579243183893033"),
@@ -4776,6 +5474,9 @@ ${sheet("Videos", [videoSheetHeaders, ...videoSheetRows])}
   });
 
 })();
+
+
+
 
 
 
