@@ -1288,3 +1288,19 @@ html[data-clipcontrol-ui="3.0.0-admin-clean"] .content{max-width:1500px}
 .admin-command-actions,.executive-kpi-grid,.period-intelligence .intel-weak,.period-intelligence .intel-pay{display:none!important}
 @media(max-width:1200px){.admin-leader-list-v300{grid-template-columns:repeat(2,minmax(0,1fr))}.video-filter-shell-v300{grid-template-columns:minmax(260px,1.5fr) repeat(3,minmax(105px,.6fr))}.video-filter-shell-v300 #globalMetricFilter,.video-filter-shell-v300 #globalSortFilter{grid-row:2}.payment-row-v300{grid-template-columns:1fr 1.4fr}.payment-money-v300,.payment-actions-v300{grid-column:auto}.account-pay-grid-v300{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:760px){.admin-command-hero-v300{align-items:flex-start;flex-direction:column}.admin-home-tools-v300{width:100%}.admin-home-tools-v300 .period-select-v224{flex:1}.admin-leader-list-v300{grid-template-columns:1fr}.video-filter-shell-v300,.metric-batch-bar-v300{grid-template-columns:1fr 1fr!important}.video-filter-shell-v300 .video-search-control,.metric-batch-bar-v300 .video-search-control{grid-column:1/-1}.payment-row-v300{grid-template-columns:1fr}.payment-accounts-v300,.payment-money-v300,.payment-actions-v300{grid-column:1}.clipper-motivation-v300{grid-template-columns:1fr}.account-pay-grid-v300{grid-template-columns:1fr}.creator-overview-v300{align-items:flex-start}.clipper-home-actions-v300{display:grid;grid-template-columns:1fr 1fr}.clipper-home-actions-v300 .btn:first-child{grid-column:1/-1}}
+
+
+/* =====================================================================
+   ClipControl 3.1.0 · FECHA REAL DE PUBLICACIÓN
+   Capa visual independiente del motor de métricas.
+   ===================================================================== */
+.publication-date-inline{display:flex;align-items:center;gap:5px;min-width:0;margin-top:5px;font-size:6.2px;color:var(--cc22-text-3)}
+.publication-date-inline>span{text-transform:uppercase;font-weight:850;letter-spacing:.045em}
+.publication-date-inline>b{font-size:7px;color:var(--cc22-text);white-space:nowrap}
+.publication-date-inline>i{font-style:normal;font-size:5.7px;font-weight:850;padding:2px 5px;border-radius:999px;white-space:nowrap;background:var(--cc22-surface-2);border:1px solid var(--cc22-border)}
+.publication-verified>i,.publication-table-cell.publication-verified>span{color:#15803d;background:rgba(34,197,94,.10);border-color:rgba(34,197,94,.22)}
+.publication-outside>i,.publication-future>i,.publication-table-cell.publication-outside>span,.publication-table-cell.publication-future>span{color:#b42318;background:rgba(239,68,68,.10);border-color:rgba(239,68,68,.23)}
+.publication-conflict>i,.publication-unavailable>i,.publication-table-cell.publication-conflict>span,.publication-table-cell.publication-unavailable>span{color:#9a5b00;background:rgba(245,158,11,.10);border-color:rgba(245,158,11,.24)}
+.publication-pending>i,.publication-table-cell.publication-pending>span{color:#475569;background:rgba(100,116,139,.09);border-color:rgba(100,116,139,.20)}
+.publication-table-cell{display:grid;gap:4px;min-width:122px}.publication-table-cell>b{font-size:11px;color:var(--cc22-text)}.publication-table-cell>span{width:max-content;max-width:100%;padding:3px 6px;border:1px solid var(--cc22-border);border-radius:999px;font-size:8px;font-weight:850}.publication-table-cell>small{font-size:7px;color:var(--cc22-text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px}.registered-date-note{display:block;margin-top:5px;color:var(--cc22-text-3);font-size:8px!important}.publication-head-actions{display:flex;align-items:center;gap:7px}
+@media(max-width:760px){.publication-date-inline>i{display:none}.publication-date-inline{margin-top:3px}.publication-table-cell{min-width:106px}}

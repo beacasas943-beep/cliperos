@@ -1,7 +1,7 @@
 (() => {
-  const CLIPCONTROL_FRONTEND_VERSION = "3.0.1-segmented-report-export";
+  const CLIPCONTROL_FRONTEND_VERSION = "3.1.0-publication-date";
   window.CLIPCONTROL_FRONTEND_VERSION = CLIPCONTROL_FRONTEND_VERSION;
-  document.documentElement.dataset.clipcontrolUi = "3.0.1-admin-clean";
+  document.documentElement.dataset.clipcontrolUi = "3.1.0-publication-date";
   "use strict";
 
   const PLATFORMS = {
@@ -328,6 +328,76 @@
     }).format(new Date(value));
   }
 
+  function publicationStatusKey(video = {}) {
+    const raw = String(video.published_date_status || "").toLowerCase();
+    if (["verified","inside_period"].includes(raw)) return "verified";
+    if (raw === "outside_period") return "outside";
+    if (raw === "conflict") return "conflict";
+    if (raw === "future") return "future";
+    if (raw === "unavailable") return "unavailable";
+    return video.published_at ? "verified" : "pending";
+  }
+
+  function publicationStatusLabel(video = {}) {
+    return ({
+      verified: "Dentro del período",
+      outside: "Fuera del período",
+      conflict: "Fecha en conflicto",
+      future: "Fecha futura",
+      unavailable: "No verificable",
+      pending: "Por verificar",
+    })[publicationStatusKey(video)] || "Por verificar";
+  }
+
+  function publicationDateInline(video = {}) {
+    const status = publicationStatusKey(video);
+    const date = video.published_at ? dateOnlyLabel(video.published_at) : (status === "unavailable" ? "No disponible" : "Pendiente");
+    const title = video.published_date_error || publicationStatusLabel(video);
+    return `<span class="publication-date-inline publication-${status}" title="${esc(title)}"><span>Publicado</span><b>${esc(date)}</b><i>${esc(publicationStatusLabel(video))}</i></span>`;
+  }
+
+  function publicationDateTable(video = {}) {
+    const status = publicationStatusKey(video);
+    const date = video.published_at ? dateOnlyLabel(video.published_at) : (status === "unavailable" ? "No verificable" : "Pendiente");
+    return `<div class="publication-table-cell publication-${status}"><b>${esc(date)}</b><span>${esc(publicationStatusLabel(video))}</span>${video.published_date_source ? `<small>${esc(video.published_date_source)}</small>` : ""}</div>`;
+  }
+
+  async function verifyVideoDatesBeforeSave(rows, accounts) {
+    const payloadRows = rows.map((row) => {
+      const account = (accounts || []).find((item) => item.id === row.account_id);
+      return { position: row.position, account_id: row.account_id, video_url: row.video_url, platform: account?.platform || inferPlatformFromUrl(row.video_url) };
+    });
+    const result = await invokeProcessor({ action: "verify_video_date_batch", report_id: state.currentReportId, rows: payloadRows });
+    if (!result?.ok) throw new Error(result?.error || "No se pudieron verificar las fechas de publicación.");
+    return result.results || [];
+  }
+
+  async function backfillVideoDates(videoIds, options = {}) {
+    const ids = [...new Set((videoIds || []).filter(Boolean))];
+    if (!ids.length) return [];
+    const results = [];
+    const chunkSize = 8;
+    for (let i = 0; i < ids.length; i += chunkSize) {
+      const response = await invokeProcessor({ action: "backfill_video_dates", video_ids: ids.slice(i, i + chunkSize), force: options.force === true });
+      if (Array.isArray(response?.results)) results.push(...response.results);
+    }
+    if (!options.silent) toast(`Fechas revisadas: ${results.length} video${results.length === 1 ? "" : "s"}.`, "success");
+    return results;
+  }
+
+  async function refreshMissingAdminPublicationDates(videos, maxItems = 12) {
+    if (!["admin","superadmin"].includes(state.profile?.role)) return false;
+    const missing = (videos || []).filter((video) => !video.published_date_verified_at).slice(0, maxItems);
+    if (!missing.length) return false;
+    try {
+      await backfillVideoDates(missing.map((video) => video.id), { silent: true });
+      return true;
+    } catch (error) {
+      console.warn("publication date backfill", error);
+      return false;
+    }
+  }
+
   function dateTimeLocalValue(value) {
     if (!value) return "";
     const parts = new Intl.DateTimeFormat("en-CA", {
@@ -468,10 +538,13 @@
     const reportRows = reports || await query(state.supabase.from("weekly_report_summary").select("*").eq("week_start", cacheKey).order("total_views", { ascending:false }));
     const reportIds = reportRows.map(report => report.report_id);
     const userIds = [...new Set(reportRows.map(report => report.user_id).filter(Boolean))];
-    const [videos, accounts] = await Promise.all([
+    let [videos, accounts] = await Promise.all([
       fetchAllAdminVideos(reportIds),
       userIds.length ? query(state.supabase.from("social_accounts").select("*").in("user_id", userIds).order("platform")) : Promise.resolve([]),
     ]);
+    if (force && await refreshMissingAdminPublicationDates(videos, 12)) {
+      videos = await fetchAllAdminVideos(reportIds);
+    }
     const reportMap = Object.fromEntries(reportRows.map(report => [report.report_id, report]));
     const accountMap = Object.fromEntries(accounts.map(account => [account.id, account]));
     const rows = videos.map(video => {
@@ -654,7 +727,7 @@
       : `${clipperFallback}${thumb?`<img src="${esc(thumb)}" alt="" loading="lazy" onerror="this.remove()">`:""}`;
     const availability = video?.metrics_meta && typeof video.metrics_meta === "object" ? (video.metrics_meta.availability || {}) : {};
     const viewsLabel = video.platform === "facebook" && availability.views === false && Number(video.views || 0) === 0 ? "—" : num(video.views);
-    return `<article class="clipper-video-card metric-card-${metricBucket(video)}"><div class="clipper-video-thumb">${clipperPreview}<b>${video.position}</b></div><div class="clipper-video-info"><div class="global-video-title"><strong>${esc(video.external_title || `Video ${video.position}`)}</strong>${metricBucketBadge(video)}</div><p>${platformLogo(video.platform)} ${esc(account.account_name||platformLabel(video.platform))} · ${dateTimeLabel(video.created_at)}</p><div class="clipper-video-metrics"><span><b>${viewsLabel}</b> vistas</span><span>${num(video.likes)} likes</span><span>${num(video.comments)} coment.</span></div><div class="global-video-actions"><a class="btn btn-ghost btn-sm" href="${esc(video.video_url)}" target="_blank" rel="noopener">Abrir</a><button class="btn btn-secondary btn-sm" data-clipper-sync="${video.id}">${uiIcon("sync",13)} Métricas</button>${editable?`<button class="btn btn-ghost btn-sm" data-edit-video="${video.id}">Editar</button><button class="btn btn-danger btn-sm" data-delete-video="${video.id}">Anular</button>`:""}</div></div></article>`;
+    return `<article class="clipper-video-card metric-card-${metricBucket(video)}"><div class="clipper-video-thumb">${clipperPreview}<b>${video.position}</b></div><div class="clipper-video-info"><div class="global-video-title"><strong>${esc(video.external_title || `Video ${video.position}`)}</strong>${metricBucketBadge(video)}</div><p>${platformLogo(video.platform)} ${esc(account.account_name||platformLabel(video.platform))} · Publicado ${video.published_at ? dateOnlyLabel(video.published_at) : "por verificar"}</p><div class="clipper-video-metrics"><span><b>${viewsLabel}</b> vistas</span><span>${num(video.likes)} likes</span><span>${num(video.comments)} coment.</span></div><div class="global-video-actions"><a class="btn btn-ghost btn-sm" href="${esc(video.video_url)}" target="_blank" rel="noopener">Abrir</a><button class="btn btn-secondary btn-sm" data-clipper-sync="${video.id}">${uiIcon("sync",13)} Métricas</button>${editable?`<button class="btn btn-ghost btn-sm" data-edit-video="${video.id}">Editar</button><button class="btn btn-danger btn-sm" data-delete-video="${video.id}">Anular</button>`:""}</div></div></article>`;
   }
 
   function renderClipperVideosV240() {
@@ -1394,8 +1467,10 @@
     }
     if (!rows.length) return toast("Completa al menos una fila para guardar.", "error");
     button.disabled = true;
-    button.textContent = "Guardando…";
+    button.textContent = "Verificando fechas…";
     try {
+      await verifyVideoDatesBeforeSave(rows, registeredAccounts);
+      button.textContent = "Guardando…";
       // Antes de insertar, intentamos recuperar una fila anulada con el mismo
       // video. Esto evita que un soft-delete deje bloqueado el enlace o el
       // número de posición. Si el RPC todavía no está instalado, simplemente
@@ -3701,9 +3776,9 @@
         && (availability.likes === true || availability.comments === true || availability.shares === true);
       const views=Number(video.views||0)>0?num(video.views):(fbHasOtherMetric?'<span class="muted" title="Facebook no expuso vistas">—</span>':'<span class="muted">Pendiente</span>');
       const metricHint = metricAvailabilityLabel(video);
-      return `<tr><td><b>${video.position}</b></td><td>${platformBadge(video.platform,true)}<br><small>${esc(account.account_name||"—")}</small></td><td><div style="display:flex;align-items:center;gap:8px;min-width:0">${thumb}<div style="min-width:0"><a href="${esc(video.video_url)}" target="_blank" rel="noopener">Abrir video</a>${video.external_title?`<small class="muted" style="display:block;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(video.external_title)}</small>`:""}</div></div></td><td><div class="report-metric-main">${uiIcon("eye",13)}<b>${views}</b></div></td><td><div class="report-like-line">${uiIcon("heart",11)} ${num(video.likes||0)} likes</div><small>${num(video.comments||0)} comentarios · ${num(video.shares||0)} compartidos</small></td><td>${metricStatus(video)}<br><small>${dateTimeLabel(video.metrics_checked_at)}</small>${metricHint ? `<br><small class="muted">${esc(metricHint)}</small>` : ""}</td>${admin?`<td>${dateTimeLabel(video.created_at)}</td>`:""}<td>${actions}</td></tr>`;
+      return `<tr><td><b>${video.position}</b></td><td>${platformBadge(video.platform,true)}<br><small>${esc(account.account_name||"—")}</small></td><td><div style="display:flex;align-items:center;gap:8px;min-width:0">${thumb}<div style="min-width:0"><a href="${esc(video.video_url)}" target="_blank" rel="noopener">Abrir video</a>${video.external_title?`<small class="muted" style="display:block;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(video.external_title)}</small>`:""}</div></div></td><td><div class="report-metric-main">${uiIcon("eye",13)}<b>${views}</b></div></td><td><div class="report-like-line">${uiIcon("heart",11)} ${num(video.likes||0)} likes</div><small>${num(video.comments||0)} comentarios · ${num(video.shares||0)} compartidos</small></td><td>${metricStatus(video)}<br><small>${dateTimeLabel(video.metrics_checked_at)}</small>${metricHint ? `<br><small class="muted">${esc(metricHint)}</small>` : ""}</td>${admin?`<td>${publicationDateTable(video)}<small class="registered-date-note">Registrado ${dateTimeLabel(video.created_at)}</small></td>`:""}<td>${actions}</td></tr>`;
     }).join("");
-    return `<div class="table-wrap compact-table video-table"><table><thead><tr><th>N.°</th><th>Red / Cuenta</th><th>Video</th><th>Vistas</th><th>Interacciones</th><th>Estado</th>${admin?"<th>Fecha</th>":""}<th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    return `<div class="table-wrap compact-table video-table"><table><thead><tr><th>N.°</th><th>Red / Cuenta</th><th>Video</th><th>Vistas</th><th>Interacciones</th><th>Estado</th>${admin?"<th>Publicación</th>":""}<th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }
 
   function errorMessage(error) {
@@ -4486,13 +4561,20 @@
     showLoading(true);
     try {
       let summary = await query(state.supabase.from("weekly_report_summary").select("*").eq("report_id",reportId).single());
-      const [videos,accounts,observations,platforms,rules] = await Promise.all([
+      let [videos,accounts,observations,platforms,rules] = await Promise.all([
         query(state.supabase.from("videos").select("*").eq("report_id",reportId).is("deleted_at",null).order("position")),
         query(state.supabase.from("social_accounts").select("*").eq("user_id",summary.user_id).order("platform")),
         query(state.supabase.from("report_observations").select("*").eq("report_id",reportId).order("created_at",{ascending:false})),
         query(state.supabase.from("weekly_report_platform_summary").select("*").eq("report_id",reportId).order("platform")),
         query(state.supabase.from("platform_payment_rules").select("*")),
       ]);
+      const missingPublicationDates = videos.filter(video => !video.published_date_verified_at);
+      if (missingPublicationDates.length) {
+        try {
+          await backfillVideoDates(missingPublicationDates.map(video => video.id), { silent: true });
+          videos = await query(state.supabase.from("videos").select("*").eq("report_id",reportId).is("deleted_at",null).order("position"));
+        } catch (dateError) { console.warn("report publication dates", dateError); }
+      }
       state.videos=videos; state.accounts=accounts;
       state.platformRuleMap = Object.fromEntries((rules||[]).map(rule=>[rule.platform,rule]));
       const rowMap=Object.fromEntries((platforms||[]).map(row=>[row.platform,row]));
@@ -5260,7 +5342,7 @@
     return `<article class="global-video-card global-video-row metric-card-${metricBucket(video)}">
       ${checkbox}
       <a class="video-row-thumb" href="${esc(video.video_url)}" target="_blank" rel="noopener" title="Abrir video">${preview}<span class="video-row-platform">${platformLogo(video.platform)}</span></a>
-      <div class="video-row-main"><div class="video-row-title"><a href="${esc(video.video_url)}" target="_blank" rel="noopener" title="${esc(title)}">${esc(title)}</a>${metricBucketBadge(video)}</div><p>${esc(video.clipper_name)} · ${esc(video.account_name)} · ${esc(platformLabel(video.platform))}</p><a class="video-row-url" href="${esc(video.video_url)}" target="_blank" rel="noopener" title="${esc(video.video_url)}">${esc(urlLabel)}</a></div>
+      <div class="video-row-main"><div class="video-row-title"><a href="${esc(video.video_url)}" target="_blank" rel="noopener" title="${esc(title)}">${esc(title)}</a>${metricBucketBadge(video)}</div><p>${esc(video.clipper_name)} · ${esc(video.account_name)} · ${esc(platformLabel(video.platform))}</p><a class="video-row-url" href="${esc(video.video_url)}" target="_blank" rel="noopener" title="${esc(video.video_url)}">${esc(urlLabel)}</a>${publicationDateInline(video)}</div>
       <div class="video-row-metric"><span>Vistas</span><b>${num(video.views)}</b></div>
       <div class="video-row-metric"><span>Likes</span><b>${num(video.likes)}</b></div>
       <div class="video-row-metric"><span>Coment.</span><b>${num(video.comments)}</b></div>
@@ -5333,7 +5415,7 @@
     const visible = sortVideos(adminVideoFilterRows(data.videos,filters));
     const uniqueClippers = [...new Map(data.videos.map(video=>[video.user_id,{id:video.user_id,name:video.clipper_name,username:video.username}])).values()].sort((a,b)=>a.name.localeCompare(b.name,"es"));
     const availableAccounts = data.accounts.filter(account=>filters.clipper==="all"||account.user_id===filters.clipper);
-    $("#content").innerHTML = `<section class="compact-page-head-v300"><div><h2>${data.videos.length} videos</h2><span>${num(data.videos.reduce((s,v)=>s+Number(v.views||0),0))} vistas</span></div><button id="refreshVideoCenter" class="icon-action" title="Recargar">${uiIcon("sync",15)}</button></section>
+    $("#content").innerHTML = `<section class="compact-page-head-v300"><div><h2>${data.videos.length} videos</h2><span>${num(data.videos.reduce((s,v)=>s+Number(v.views||0),0))} vistas</span></div><div class="publication-head-actions"><button id="verifyVideoDatesCenter" class="btn btn-ghost btn-sm" title="Completar fechas de publicación">📅 Fechas</button><button id="refreshVideoCenter" class="icon-action" title="Recargar">${uiIcon("sync",15)}</button></div></section>
       <section class="video-filter-shell video-filter-shell-v300"><div class="video-search-control">${uiIcon("activity",15)}<input id="globalVideoSearch" value="${esc(filters.search)}" placeholder="Buscar título, link, clipero, cuenta o red"></div><select id="globalClipperFilter"><option value="all">Cliperos</option>${uniqueClippers.map(item=>`<option value="${item.id}" ${filters.clipper===item.id?"selected":""}>${esc(item.name)}</option>`).join("")}</select><select id="globalAccountFilter"><option value="all">Cuentas</option>${availableAccounts.map(account=>`<option value="${account.id}" ${filters.account===account.id?"selected":""}>${esc(account.account_name)}</option>`).join("")}</select><select id="globalPlatformFilter"><option value="all">Redes</option>${Object.keys(PLATFORMS).map(platform=>`<option value="${platform}" ${filters.platform===platform?"selected":""}>${esc(platformLabel(platform))}</option>`).join("")}</select><select id="globalMetricFilter"><option value="all">Estados</option>${["ok","partial","error","syncing","pending"].map(status=>`<option value="${status}" ${filters.status===status?"selected":""}>${metricBucketLabel(status)}</option>`).join("")}</select><select id="globalSortFilter"><option value="views_desc" ${filters.sort==="views_desc"?"selected":""}>Más virales</option><option value="recent" ${filters.sort==="recent"?"selected":""}>Más recientes</option><option value="oldest" ${filters.sort==="oldest"?"selected":""}>Más antiguos</option></select></section>
       <div class="filter-result-line"><span><b>${visible.length}</b> resultados</span>${Object.entries(filters).some(([k,v])=>k!=="sort"&&v&&v!=="all")?'<button id="clearVideoFilters" class="btn btn-ghost btn-sm">Limpiar</button>':""}</div>
       <section class="global-video-grid global-video-list global-video-list-v300">${visible.map(video=>adminVideoCard(video)).join("")||'<div class="empty global-empty">Sin resultados.</div>'}</section>`;
@@ -5342,6 +5424,18 @@
     [["globalClipperFilter","clipper"],["globalAccountFilter","account"],["globalPlatformFilter","platform"],["globalMetricFilter","status"],["globalSortFilter","sort"]].forEach(([id,key])=>$("#"+id)?.addEventListener("change",e=>{filters[key]=e.target.value;if(key==="clipper")filters.account="all";rerender();}));
     $("#clearVideoFilters")?.addEventListener("click",()=>{state.videoCenterFilters={search:"",clipper:"all",account:"all",platform:"all",status:"all",sort:"views_desc"};rerender();});
     $("#refreshVideoCenter")?.addEventListener("click",()=>renderAdminVideoCenterV300(true));
+    $("#verifyVideoDatesCenter")?.addEventListener("click", async () => {
+      const button = $("#verifyVideoDatesCenter");
+      const pending = data.videos.filter(video => !video.published_date_verified_at || video.published_date_status === "unavailable");
+      if (!pending.length) return toast("Todas las fechas ya fueron revisadas.", "success");
+      button.disabled = true; button.textContent = "Verificando…";
+      try {
+        await backfillVideoDates(pending.map(video => video.id), { force: true });
+        state.adminVideoData = null;
+        await renderAdminVideoCenterV300(true);
+      } catch (error) { toast(errorMessage(error), "error"); }
+      finally { if (button?.isConnected) { button.disabled = false; button.textContent = "📅 Fechas"; } }
+    });
     bindAdminVideoCards();
   }
 
@@ -5462,7 +5556,7 @@
 
   window.clipcontrolDebugFrontend = () => ({
     version: CLIPCONTROL_FRONTEND_VERSION,
-    source: "app-v2.9.0.js",
+    source: "app-v3.1.0-publication-date.js",
     scripts: [...document.scripts].map((script) => script.src).filter(Boolean),
     samples: {
       facebook_reel: videoUrlValidation("https://www.facebook.com/reel/1579243183893033"),
