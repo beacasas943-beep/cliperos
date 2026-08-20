@@ -1,7 +1,7 @@
 (() => {
-  const CLIPCONTROL_FRONTEND_VERSION = "3.1.0-publication-date";
+  const CLIPCONTROL_FRONTEND_VERSION = "3.2.0-access-gate";
   window.CLIPCONTROL_FRONTEND_VERSION = CLIPCONTROL_FRONTEND_VERSION;
-  document.documentElement.dataset.clipcontrolUi = "3.1.0-publication-date";
+  document.documentElement.dataset.clipcontrolUi = "3.2.0-access-gate";
   "use strict";
 
   const PLATFORMS = {
@@ -151,14 +151,20 @@
     return String(hostname || "").trim().toLowerCase().replace(/^www\./, "");
   }
 
+  function hostIsOrSubdomain(host, domain) {
+    const normalizedHost = normalizedHostname(host);
+    const normalizedDomain = normalizedHostname(domain);
+    return normalizedHost === normalizedDomain || normalizedHost.endsWith(`.${normalizedDomain}`);
+  }
+
   function inferPlatformFromUrl(value) {
     try {
       const url = new URL(normalizeUrl(value));
       const host = normalizedHostname(url.hostname);
-      if (host.includes("youtu.be") || host.includes("youtube.com")) return "youtube";
-      if (host.includes("tiktok.com")) return "tiktok";
-      if (host.includes("instagram.com")) return "instagram";
-      if (host.includes("facebook.com") || host.includes("fb.watch")) return "facebook";
+      if (host === "youtu.be" || hostIsOrSubdomain(host, "youtube.com")) return "youtube";
+      if (hostIsOrSubdomain(host, "tiktok.com")) return "tiktok";
+      if (hostIsOrSubdomain(host, "instagram.com")) return "instagram";
+      if (host === "fb.watch" || hostIsOrSubdomain(host, "facebook.com")) return "facebook";
       return null;
     } catch {
       return null;
@@ -291,6 +297,307 @@
     return state.accounts.filter((account) => account.active);
   }
 
+  const ACCESS_PAYMENT_SQL_VERSION = "31_clipcontrol_access_payment_v3_2.sql";
+  const ACCESS_QR_BUCKET = "clipcontrol-payment-qr";
+  const ACCESS_PROOF_BUCKET = "clipcontrol-payment-proofs";
+
+  function accessPaymentStatusLabelV320(status) {
+    return ({
+      pending: "Pago pendiente",
+      proof_uploaded: "Comprobante en revisión",
+      approved: "Pago aprobado",
+      rejected: "Comprobante rechazado",
+      waived: "Exonerado",
+      cancelled: "Reemplazado",
+    })[status] || "Sin cobro";
+  }
+
+  function accessPaymentStatusClassV320(status) {
+    if (["approved","waived"].includes(status)) return "is-approved";
+    if (status === "proof_uploaded") return "is-review";
+    if (status === "rejected") return "is-rejected";
+    if (status === "pending") return "is-pending";
+    return "is-neutral";
+  }
+
+  function accessQrPublicUrlV320(path) {
+    if (!path || !state.supabase) return "";
+    const { data } = state.supabase.storage.from(ACCESS_QR_BUCKET).getPublicUrl(path);
+    return data?.publicUrl ? `${data.publicUrl}${data.publicUrl.includes("?") ? "&" : "?"}v=${Date.now()}` : "";
+  }
+
+  function normalizeAccessPaymentRowV320(value) {
+    if (!value) return { can_upload: true, fee: null, settings: null };
+    if (Array.isArray(value)) value = value[0] || null;
+    if (!value) return { can_upload: true, fee: null, settings: null };
+    return value;
+  }
+
+  async function refreshMyAccessPaymentV320() {
+    if (state.profile?.role !== "clipper") {
+      state.accessPaymentV320 = { can_upload: true, fee: null, settings: null };
+      return state.accessPaymentV320;
+    }
+    try {
+      const result = await query(state.supabase.rpc("clipcontrol_my_access_payment_v320"));
+      state.accessPaymentV320 = normalizeAccessPaymentRowV320(result);
+    } catch (error) {
+      const msg = String(error?.message || error || "");
+      if (/clipcontrol_my_access_payment_v320|PGRST202|does not exist|Could not find the function/i.test(msg)) {
+        console.warn(`${ACCESS_PAYMENT_SQL_VERSION} todavía no está instalado.`);
+        state.accessPaymentV320 = { can_upload: true, fee: null, settings: null, setup_missing: true };
+      } else {
+        throw error;
+      }
+    }
+    return state.accessPaymentV320;
+  }
+
+  function clipperUploadEnabledV320() {
+    if (state.profile?.role !== "clipper") return true;
+    return state.accessPaymentV320?.can_upload !== false;
+  }
+
+  function clipperAccessPaymentMarkupV320() {
+    if (state.profile?.role !== "clipper") return "";
+    const access = state.accessPaymentV320;
+    if (!access || access.setup_missing) return "";
+    const settings = access.settings || {};
+    if (!access.fee) {
+      if (access.can_upload !== false) return "";
+      const qrUrl = accessQrPublicUrlV320(settings.qr_path);
+      return `<section class="access-payment-gate-v320 is-pending">
+        <div class="access-payment-copy-v320">
+          <span class="section-eyebrow">ACCESO A LA PLATAFORMA</span>
+          <h3>Cobro pendiente de asignación</h3>
+          <p>Administración debe asignarte el monto de acceso antes de que puedas registrar nuevos clips.</p>
+          ${settings.instructions ? `<div class="access-payment-note-v320">${esc(settings.instructions)}</div>` : ""}
+          <div class="actions"><span class="access-payment-wait-v320">${uiIcon("alert",14)} Contacta a administración</span></div>
+        </div>
+        ${qrUrl ? `<div class="access-payment-qr-v320"><img src="${esc(qrUrl)}" alt="QR de pago"><small>${esc(settings.payment_label || "QR de pago")}</small></div>` : ""}
+      </section>`;
+    }
+    const fee = access.fee;
+    const status = String(fee.status || "");
+    const canUpload = access.can_upload !== false;
+    const qrUrl = accessQrPublicUrlV320(settings.qr_path);
+    const due = fee.due_date ? dateOnlyLabel(fee.due_date) : "Sin fecha límite";
+    const action = canUpload
+      ? `<span class="access-payment-ok-v320">${uiIcon("check",14)} Acceso para subir clips habilitado</span>`
+      : `<button class="btn btn-primary btn-sm" data-upload-access-proof>${uiIcon("upload",14)} ${status === "rejected" ? "Subir nuevo comprobante" : status === "proof_uploaded" ? "Reemplazar comprobante" : "Subir comprobante"}</button>`;
+    return `<section class="access-payment-gate-v320 ${accessPaymentStatusClassV320(status)}">
+      <div class="access-payment-copy-v320">
+        <span class="section-eyebrow">ACCESO A LA PLATAFORMA</span>
+        <h3>${accessPaymentStatusLabelV320(status)}</h3>
+        <p>${canUpload ? "Tu acceso para registrar clips está habilitado." : "El registro de nuevos clips permanecerá bloqueado hasta que administración apruebe este pago."}</p>
+        <div class="access-payment-meta-v320">
+          <span><small>Monto</small><b>${money(fee.amount || 0)}</b></span>
+          <span><small>Vencimiento</small><b>${esc(due)}</b></span>
+          <span><small>Estado</small><b>${esc(accessPaymentStatusLabelV320(status))}</b></span>
+        </div>
+        ${fee.review_note && status === "rejected" ? `<div class="access-payment-note-v320"><b>Motivo:</b> ${esc(fee.review_note)}</div>` : ""}
+        ${settings.instructions ? `<div class="access-payment-note-v320">${esc(settings.instructions)}</div>` : ""}
+        <div class="actions">${action}</div>
+      </div>
+      ${qrUrl ? `<div class="access-payment-qr-v320"><img src="${esc(qrUrl)}" alt="QR de pago"><small>${esc(settings.payment_label || "Escanea para pagar")}</small></div>` : ""}
+    </section>`;
+  }
+
+  function bindClipperAccessPaymentActionsV320(root = document) {
+    $$("[data-upload-access-proof]", root).forEach(button => button.addEventListener("click", openAccessPaymentProofModalV320));
+  }
+
+  async function openAccessPaymentProofModalV320() {
+    const access = await refreshMyAccessPaymentV320();
+    const fee = access?.fee;
+    if (!fee || access.can_upload) return toast("No tienes un pago pendiente que bloquee tus clips.", "success");
+    const settings = access.settings || {};
+    const qrUrl = accessQrPublicUrlV320(settings.qr_path);
+    openModal(`<div class="modal-head"><div><h2>Comprobante de pago</h2><p>Sube una captura clara. Administración debe aprobarla para habilitar tus clips.</p></div><button id="accessProofX" class="modal-close">×</button></div>
+      <form id="accessProofForm"><div class="modal-body">
+        <div class="access-proof-summary-v320"><div><span>Monto</span><b>${money(fee.amount || 0)}</b></div><div><span>Estado</span><b>${esc(accessPaymentStatusLabelV320(fee.status))}</b></div></div>
+        ${qrUrl ? `<div class="access-proof-qr-v320"><img src="${esc(qrUrl)}" alt="QR de pago"><div><b>${esc(settings.payment_label || "Pago de acceso")}</b><p>${esc(settings.instructions || "Realiza el pago y adjunta la captura.")}</p></div></div>` : `<div class="alert alert-warning"><div>⚠</div><div><strong>QR no configurado</strong><p>Solicita a administración los datos de pago.</p></div></div>`}
+        <label style="margin-top:14px">Captura del pago<input id="accessProofFile" type="file" accept="image/jpeg,image/png,image/webp" required><small>JPG, PNG o WEBP · máximo 8 MB.</small></label>
+        <label style="margin-top:12px">Nota opcional<textarea id="accessProofNote" rows="2" maxlength="500" placeholder="N.° de operación o comentario"></textarea></label>
+      </div><div class="modal-foot"><button type="button" id="accessProofCancel" class="btn btn-ghost">Cancelar</button><button id="accessProofSubmit" class="btn btn-primary">Enviar comprobante</button></div></form>`, "small", layer => {
+        $("#accessProofX", layer).addEventListener("click", closeModal);
+        $("#accessProofCancel", layer).addEventListener("click", closeModal);
+        $("#accessProofForm", layer).addEventListener("submit", async event => {
+          event.preventDefault();
+          const file = $("#accessProofFile", layer).files?.[0];
+          if (!file) return toast("Selecciona una captura.", "error");
+          if (!/^image\/(jpeg|png|webp)$/i.test(file.type || "")) return toast("Usa JPG, PNG o WEBP.", "error");
+          if (file.size > 8 * 1024 * 1024) return toast("La captura debe pesar máximo 8 MB.", "error");
+          const button = $("#accessProofSubmit", layer);
+          button.disabled = true;
+          button.textContent = "Enviando…";
+          try {
+            const ext = ({ "image/jpeg":"jpg", "image/png":"png", "image/webp":"webp" })[file.type] || "jpg";
+            const proofPath = `${state.profile.id}/${fee.id}/${Date.now()}.${ext}`;
+            const { error: uploadError } = await state.supabase.storage.from(ACCESS_PROOF_BUCKET).upload(proofPath, file, { upsert:false, contentType:file.type, cacheControl:"3600" });
+            if (uploadError) throw uploadError;
+            await query(state.supabase.rpc("submit_access_fee_proof_v320", {
+              p_fee_id: fee.id,
+              p_proof_path: proofPath,
+              p_note: $("#accessProofNote", layer).value.trim() || null,
+            }));
+            closeModal();
+            toast("Comprobante enviado. Queda pendiente de aprobación.", "success");
+            await loadClipperCurrentData();
+            await renderPage(true);
+          } catch (error) {
+            toast(errorMessage(error), "error");
+            button.disabled = false;
+            button.textContent = "Enviar comprobante";
+          }
+        });
+      });
+  }
+
+  async function fetchAdminAccessFeesV320() {
+    try {
+      const rows = await query(state.supabase.rpc("admin_list_access_fees_v320"));
+      return Array.isArray(rows) ? rows : [];
+    } catch (error) {
+      const msg = String(error?.message || error || "");
+      if (/admin_list_access_fees_v320|PGRST202|does not exist|Could not find the function/i.test(msg)) {
+        console.warn(`${ACCESS_PAYMENT_SQL_VERSION} todavía no está instalado.`);
+        return [];
+      }
+      throw error;
+    }
+  }
+
+  function adminAccessFeeBadgeV320(fee) {
+    if (!fee?.fee_id) return `<span class="access-fee-admin-badge-v320 is-neutral">Sin cobro</span>`;
+    return `<span class="access-fee-admin-badge-v320 ${accessPaymentStatusClassV320(fee.fee_status)}">${esc(accessPaymentStatusLabelV320(fee.fee_status))}</span>`;
+  }
+
+  async function fetchAccessPaymentSettingsV320() {
+    try {
+      return await query(state.supabase.from("clipper_access_payment_settings").select("*").eq("id", 1).maybeSingle()) || {};
+    } catch (error) {
+      return {};
+    }
+  }
+
+  async function openAccessPaymentSettingsAdminV320() {
+    const settings = await fetchAccessPaymentSettingsV320();
+    const qrUrl = accessQrPublicUrlV320(settings.qr_path);
+    openModal(`<div class="modal-head"><div><h2>QR de cobro</h2><p>Este QR será visible para todos los cliperos que tengan un cobro pendiente.</p></div><button id="accessQrX" class="modal-close">×</button></div>
+      <form id="accessQrForm"><div class="modal-body">
+        ${qrUrl ? `<div class="admin-qr-preview-v320"><img src="${esc(qrUrl)}" alt="QR actual"><span>QR actual</span></div>` : '<div class="alert alert-warning"><div>QR</div><div><strong>Aún no configurado</strong><p>Sube la imagen del QR que usarán los cliperos.</p></div></div>'}
+        <div class="form-grid compact-form" style="margin-top:14px">
+          <label>Nombre del cobro<input name="payment_label" maxlength="120" value="${esc(settings.payment_label || "Pago de acceso a ClipControl")}"></label>
+          <label>Nuevo QR<input id="accessQrFile" type="file" accept="image/jpeg,image/png,image/webp"><small>Déjalo vacío para conservar el actual.</small></label>
+          <label class="full">Instrucciones<textarea name="instructions" maxlength="1000" rows="3">${esc(settings.instructions || "")}</textarea></label>
+          <label class="full checkbox-label"><input name="payment_required" type="checkbox" ${settings.payment_required === false ? "" : "checked"}> Exigir pago de acceso a los cliperos</label>
+        </div>
+      </div><div class="modal-foot"><button type="button" id="accessQrCancel" class="btn btn-ghost">Cancelar</button><button id="accessQrSave" class="btn btn-primary">Guardar configuración</button></div></form>`, "small", layer => {
+        $("#accessQrX", layer).addEventListener("click", closeModal);
+        $("#accessQrCancel", layer).addEventListener("click", closeModal);
+        $("#accessQrForm", layer).addEventListener("submit", async event => {
+          event.preventDefault();
+          const f = Object.fromEntries(new FormData(event.target));
+          const file = $("#accessQrFile", layer).files?.[0];
+          const button = $("#accessQrSave", layer);
+          button.disabled = true;
+          button.textContent = "Guardando…";
+          try {
+            let qrPath = settings.qr_path || null;
+            if (file) {
+              if (!/^image\/(jpeg|png|webp)$/i.test(file.type || "")) throw new Error("El QR debe ser JPG, PNG o WEBP.");
+              if (file.size > 5 * 1024 * 1024) throw new Error("El QR debe pesar máximo 5 MB.");
+              qrPath = "current";
+              const { error: uploadError } = await state.supabase.storage.from(ACCESS_QR_BUCKET).upload(qrPath, file, { upsert:true, contentType:file.type, cacheControl:"60" });
+              if (uploadError) throw uploadError;
+            }
+            await query(state.supabase.rpc("admin_set_access_payment_settings_v320", {
+              p_qr_path: qrPath,
+              p_payment_label: String(f.payment_label || "").trim() || "Pago de acceso a ClipControl",
+              p_instructions: String(f.instructions || "").trim() || null,
+              p_payment_required: f.payment_required === "on",
+            }));
+            closeModal();
+            toast("QR de cobro actualizado", "success");
+            await renderAdminClippers();
+          } catch (error) {
+            toast(errorMessage(error), "error");
+            button.disabled = false;
+            button.textContent = "Guardar configuración";
+          }
+        });
+      });
+  }
+
+  async function openAccessFeeAdminModalV320(userId) {
+    const user = (state.adminAccessUsersV320 || []).find(item => item.user_id === userId || item.id === userId);
+    if (!user) return;
+    const fee = state.adminAccessFeeMapV320?.[userId] || null;
+    const settings = await fetchAccessPaymentSettingsV320();
+    const qrUrl = accessQrPublicUrlV320(settings.qr_path);
+    const unresolved = fee && ["pending","proof_uploaded","rejected"].includes(fee.fee_status);
+    openModal(`<div class="modal-head"><div><h2>Cobro de acceso</h2><p>${esc(user.names ? `${user.names} ${user.surnames || ""}`.trim() : `@${user.username}`)} · @${esc(user.username || "")}</p></div><button id="accessFeeX" class="modal-close">×</button></div>
+      <div class="modal-body">
+        <div class="admin-access-fee-state-v320">
+          <div><span>Estado actual</span>${adminAccessFeeBadgeV320(fee)}</div>
+          <div><span>Monto</span><b>${fee?.amount != null ? money(fee.amount) : "Sin asignar"}</b></div>
+          <div><span>Puede subir clips</span><b class="${fee?.can_upload === false ? "danger-text-v320" : "success-text-v320"}">${fee?.can_upload === false ? "NO" : "SÍ"}</b></div>
+        </div>
+        ${qrUrl ? `<div class="admin-access-fee-qr-v320"><img src="${esc(qrUrl)}" alt="QR de cobro"><div><b>${esc(settings.payment_label || "QR de pago")}</b><p>${esc(settings.instructions || "")}</p></div></div>` : ""}
+        ${fee?.proof_path ? `<div class="access-proof-admin-row-v320"><div><b>Comprobante recibido</b><small>${fee.proof_uploaded_at ? dateTimeLabel(fee.proof_uploaded_at) : ""}</small></div><button id="viewAccessProofV320" class="btn btn-secondary btn-sm">Ver captura</button></div>` : ""}
+        ${fee?.review_note ? `<div class="access-payment-note-v320">${esc(fee.review_note)}</div>` : ""}
+        <div class="divider"></div>
+        <form id="accessFeeAssignFormV320" class="form-grid compact-form">
+          <label>Monto a cobrar S/<input name="amount" type="number" min="0.01" step="0.01" required value="${unresolved ? Number(fee.amount || 0).toFixed(2) : ""}" placeholder="50.00"></label>
+          <label>Vencimiento<input name="due_date" type="date" value="${unresolved && fee.due_date ? String(fee.due_date).slice(0,10) : ""}"></label>
+          <label class="full">Nota administrativa<textarea name="note" rows="2" maxlength="500" placeholder="Concepto o detalle del cobro">${unresolved ? esc(fee.admin_note || "") : ""}</textarea></label>
+          <div class="full actions"><button class="btn btn-primary">${unresolved ? "Reasignar cobro" : "Asignar cobro"}</button>${unresolved ? '<small class="muted">Reasignar reemplaza el cobro pendiente actual.</small>' : ""}</div>
+        </form>
+        ${unresolved ? `<div class="divider"></div><div class="admin-access-review-v320"><h3>Revisar acceso</h3><label>Comentario<textarea id="accessFeeReviewNoteV320" rows="2" maxlength="500" placeholder="Motivo opcional"></textarea></label><div class="actions">${fee.fee_status === "proof_uploaded" ? '<button class="btn btn-success" data-access-review="approve">Aprobar pago</button><button class="btn btn-danger" data-access-review="reject">Rechazar captura</button>' : '<button class="btn btn-success" data-access-review="approve">Marcar como pagado</button>'}<button class="btn btn-ghost" data-access-review="waive">Exonerar</button></div></div>` : ""}
+      </div><div class="modal-foot"><button id="accessFeeClose" class="btn btn-ghost">Cerrar</button></div>`, "medium", layer => {
+        $("#accessFeeX", layer).addEventListener("click", closeModal);
+        $("#accessFeeClose", layer).addEventListener("click", closeModal);
+        $("#viewAccessProofV320", layer)?.addEventListener("click", async () => {
+          try {
+            const { data, error } = await state.supabase.storage.from(ACCESS_PROOF_BUCKET).createSignedUrl(fee.proof_path, 300);
+            if (error) throw error;
+            window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+          } catch (error) { toast(errorMessage(error), "error"); }
+        });
+        $("#accessFeeAssignFormV320", layer).addEventListener("submit", async event => {
+          event.preventDefault();
+          const f = Object.fromEntries(new FormData(event.target));
+          const amount = Number(f.amount);
+          if (!(amount > 0)) return toast("Ingresa un monto mayor a cero.", "error");
+          if (unresolved && !confirm("Esto reemplazará el cobro pendiente actual. ¿Continuar?")) return;
+          try {
+            await query(state.supabase.rpc("admin_assign_access_fee_v320", {
+              p_user_id: userId,
+              p_amount: amount,
+              p_due_date: f.due_date || null,
+              p_note: String(f.note || "").trim() || null,
+            }));
+            closeModal();
+            toast("Cobro asignado. El clipero queda bloqueado para nuevos clips hasta aprobación.", "success");
+            await renderAdminClippers();
+          } catch (error) { toast(errorMessage(error), "error"); }
+        });
+        $$("[data-access-review]", layer).forEach(button => button.addEventListener("click", async () => {
+          const action = button.dataset.accessReview;
+          const note = $("#accessFeeReviewNoteV320", layer)?.value.trim() || null;
+          const question = action === "approve" ? "¿Aprobar este pago y habilitar la subida de clips?" : action === "reject" ? "¿Rechazar el comprobante y mantener bloqueado el acceso?" : "¿Exonerar este cobro y habilitar la subida de clips?";
+          if (!confirm(question)) return;
+          try {
+            await query(state.supabase.rpc("admin_review_access_fee_v320", { p_fee_id: fee.fee_id, p_action: action, p_note: note }));
+            closeModal();
+            toast(action === "reject" ? "Comprobante rechazado" : "Acceso habilitado", "success");
+            await renderAdminClippers();
+          } catch (error) { toast(errorMessage(error), "error"); }
+        }));
+      });
+  }
+
   function limaDateParts(date = new Date()) {
     const parts = new Intl.DateTimeFormat("en-CA", {
       timeZone: "America/Lima", year: "numeric", month: "2-digit", day: "2-digit",
@@ -369,7 +676,17 @@
     });
     const result = await invokeProcessor({ action: "verify_video_date_batch", report_id: state.currentReportId, rows: payloadRows });
     if (!result?.ok) throw new Error(result?.error || "No se pudieron verificar las fechas de publicación.");
-    return result.results || [];
+    const results = Array.isArray(result.results) ? result.results : [];
+    const invalid = results.find(item => {
+      const status = String(item?.published_date_status || item?.status || "").toLowerCase();
+      return ["outside_period","future","conflict"].includes(status);
+    });
+    if (invalid) {
+      const status = String(invalid.published_date_status || invalid.status || "").toLowerCase();
+      const label = status === "outside_period" ? "fuera del período" : status === "future" ? "con fecha futura" : "con fecha en conflicto";
+      throw new Error(`El video de la fila ${invalid.position || "indicada"} aparece ${label}. Corrige el enlace antes de guardar.`);
+    }
+    return results;
   }
 
   async function backfillVideoDates(videoIds, options = {}) {
@@ -687,6 +1004,7 @@
   async function usePublicYoutubeVideo(url) {
     if (state.profile.role !== "clipper") return;
     if (!profileComplete(state.profile)) return openProfileModal(true);
+    if (!clipperUploadEnabledV320()) return toast("Tu acceso para subir clips está bloqueado por un pago pendiente.", "error");
     if (!reportEditable(state.currentSummary)) return toast("El período ya no permite agregar videos.","error");
     if (!activeAccounts().some(account=>account.platform==="youtube")) {
       toast("Registra primero tu cuenta de YouTube.","error");
@@ -732,7 +1050,7 @@
 
   function renderClipperVideosV240() {
     setHeader("Mis videos", "Busca, revisa y actualiza");
-    const editable=reportEditable(state.currentSummary);
+    const editable=reportEditable(state.currentSummary) && clipperUploadEnabledV320();
     state.clipperVideoFilters=state.clipperVideoFilters||{search:"",platform:"all",status:"all",account:"all"};
     const f=state.clipperVideoFilters, accountMap=Object.fromEntries(state.accounts.map(account=>[account.id,account]));
     const visible=state.videos.filter(video=>{
@@ -743,10 +1061,11 @@
     });
     const totalViews=state.videos.reduce((sum,video)=>sum+Number(video.views||0),0);
     const issues=state.videos.filter(video=>metricBucket(video)!=="ok").length;
-    $("#content").innerHTML=`<section class="executive-head clipper-video-head"><div><span class="section-eyebrow">${weekLabel(state.currentSummary.week_start)}</span><h2>${state.videos.length} videos · ${num(totalViews)} vistas</h2><p>${issues?`${issues} métricas en proceso o por revisar`:"Todas las métricas están al día"}</p></div><button id="quickAddBtn" class="btn btn-primary" ${!editable?"disabled":""}>${uiIcon("plus",15)} Agregar videos</button></section>
+    $("#content").innerHTML=`${clipperAccessPaymentMarkupV320()}<section class="executive-head clipper-video-head"><div><span class="section-eyebrow">${weekLabel(state.currentSummary.week_start)}</span><h2>${state.videos.length} videos · ${num(totalViews)} vistas</h2><p>${issues?`${issues} métricas en proceso o por revisar`:"Todas las métricas están al día"}</p></div><button id="quickAddBtn" class="btn btn-primary" ${!editable?"disabled":""}>${uiIcon("plus",15)} Agregar videos</button></section>
       <section class="video-filter-shell clipper-video-filters"><div class="video-search-control">${uiIcon("activity",14)}<input id="clipperVideoSearch" value="${esc(f.search)}" placeholder="Buscar video o cuenta"></div><select id="clipperPlatformFilter"><option value="all">Todas las redes</option>${Object.keys(PLATFORMS).map(platform=>`<option value="${platform}" ${f.platform===platform?"selected":""}>${platformLabel(platform)}</option>`).join("")}</select><select id="clipperAccountFilter"><option value="all">Todas las cuentas</option>${activeAccounts().map(account=>`<option value="${account.id}" ${f.account===account.id?"selected":""}>${esc(account.account_name)}</option>`).join("")}</select><select id="clipperMetricFilter"><option value="all">Todos los estados</option>${["ok","partial","error","syncing","pending"].map(status=>`<option value="${status}" ${f.status===status?"selected":""}>${metricBucketLabel(status)}</option>`).join("")}</select></section>
       <div class="filter-result-line"><span><b>${visible.length}</b> resultados</span><button id="openYoutubeFromVideos" class="btn btn-ghost btn-sm">${platformLogo("youtube")} Ver canal público</button></div><section class="clipper-video-grid">${visible.map(video=>clipperVideoCenterCard(video,accountMap,editable)).join("")||'<div class="empty global-empty">No hay videos con estos filtros.</div>'}</section>`;
     $("#quickAddBtn")?.addEventListener("click",handleQuickRegisterAction);
+    bindClipperAccessPaymentActionsV320($("#content"));
     $("#openYoutubeFromVideos")?.addEventListener("click",()=>navigate("channel"));
     $("#clipperVideoSearch")?.addEventListener("input",debounce(event=>{f.search=event.target.value;renderClipperVideosV240();},250));
     [["clipperPlatformFilter","platform"],["clipperAccountFilter","account"],["clipperMetricFilter","status"]].forEach(([id,key])=>$("#"+id)?.addEventListener("change",event=>{f[key]=event.target.value;renderClipperVideosV240();}));
@@ -1225,6 +1544,10 @@
   }
 
   async function handleQuickRegisterAction() {
+    if (!clipperUploadEnabledV320()) {
+      toast("Tu acceso para subir clips está bloqueado. Completa el pago y espera la aprobación de administración.", "error");
+      return;
+    }
     if (!profileComplete(state.profile)) {
       openProfileModal(true);
       return;
@@ -1280,6 +1603,7 @@
   }
 
   function openQuickRegisterModal(initialUrls = []) {
+    if (!clipperUploadEnabledV320()) return toast("Tu acceso para subir clips está bloqueado por un pago pendiente.", "error");
     const s = state.currentSummary;
     const registeredAccounts = activeAccounts();
     if (!registeredAccounts.length) return toast("Primero registra una cuenta social.", "error");
@@ -1438,6 +1762,7 @@
   }
 
   async function saveQuickRows(layer, registeredAccounts, draftKey) {
+    if (!clipperUploadEnabledV320()) return toast("Tu acceso para subir clips está bloqueado por un pago pendiente.", "error");
     const button = $("#saveQuickBtn", layer);
     const rows = [];
     const seenUrls = new Set();
@@ -1563,8 +1888,24 @@
             const accountId = $("#editAccount", layer).value;
             const videoUrl = normalizeUrl($("#editUrl", layer).value);
             if (!accountId) throw new Error("Selecciona una cuenta.");
-            if (!isValidHttpUrl(videoUrl)) throw new Error("Ingresa un enlace válido.");
-            await query(state.supabase.from("videos").update({ account_id: accountId, video_url: videoUrl, metrics_status: "pending", metrics_error: null, metrics_next_check_at: new Date().toISOString() }).eq("id", video.id));
+            const account = ownerAccounts.find(item => item.id === accountId);
+            if (!account) throw new Error("La cuenta seleccionada no es válida.");
+            const validation = videoUrlValidation(videoUrl, account.platform);
+            if (!validation.ok) throw new Error(validation.reason);
+            if (!adminMode && !clipperUploadEnabledV320()) throw new Error("Tu acceso para modificar clips está bloqueado por un pago pendiente.");
+            await verifyVideoDatesBeforeSave([{ position:video.position, account_id:accountId, video_url:validation.url }], ownerAccounts);
+            await query(state.supabase.from("videos").update({
+              account_id: accountId,
+              video_url: validation.url,
+              metrics_status: "pending",
+              metrics_error: null,
+              metrics_next_check_at: new Date().toISOString(),
+              published_at: null,
+              published_date_status: null,
+              published_date_source: null,
+              published_date_error: null,
+              published_date_verified_at: null,
+            }).eq("id", video.id));
             closeModal();
             toast("Video actualizado. Detectando métricas…", "success");
             await syncVideoMetrics(video.id, true);
@@ -1607,8 +1948,9 @@
           event.preventDefault();
           const f = Object.fromEntries(new FormData(event.target));
           const channelUrl = normalizeUrl(f.channel_url);
-          if (!isValidHttpUrl(channelUrl)) return toast("Ingresa un enlace válido del perfil o canal.", "error");
-          const payload = { platform: String(f.platform), account_name: String(f.account_name).trim(), channel_url: channelUrl, active: account ? f.active === "on" : true };
+          const validation = videoUrlValidation(channelUrl, String(f.platform));
+          if (!validation.ok) return toast(`Cuenta social: ${validation.reason}`, "error");
+          const payload = { platform: String(f.platform), account_name: String(f.account_name).trim(), channel_url: validation.url, active: account ? f.active === "on" : true };
           try {
             if (account) await query(state.supabase.from("social_accounts").update(payload).eq("id", account.id));
             else await query(state.supabase.from("social_accounts").insert({ user_id: state.profile.id, ...payload }));
@@ -3370,6 +3712,7 @@
       check: '<path d="m5 12 4 4L19 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
       shield: '<path d="M12 3 4.5 6v5.4c0 4.5 3 7.6 7.5 9.6 4.5-2 7.5-5.1 7.5-9.6V6L12 3Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>',
       sync: '<path d="M20 7v5h-5M4 17v-5h5M6.1 8.2A7 7 0 0 1 18 7l2 5M18 15.8A7 7 0 0 1 6 17l-2-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+      upload: '<path d="M12 16V4m0 0-4 4m4-4 4 4M5 14v5h14v-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
       logout: '<path d="M10 17l5-5-5-5M15 12H3M14 4h5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>'
     };
     return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true">${paths[name] || paths.activity}</svg>`;
@@ -4263,24 +4606,49 @@
   }
 
   async function renderAdminClippers() {
-    setHeader("Accesos","Actividad real, último acceso y administración de usuarios.");
-    const [overview,profiles] = await Promise.all([
+    setHeader("Cliperos","Accesos, actividad y cobro de habilitación.");
+    const [overview,profiles,accessFees] = await Promise.all([
       query(state.supabase.from("admin_clipper_overview").select("*").order("role").order("username")),
       query(state.supabase.from("profiles").select("id,avatar_url,last_login_at,last_seen_at,login_count")),
+      fetchAdminAccessFeesV320(),
     ]);
     const profileMap = Object.fromEntries((profiles || []).map(p => [p.id,p]));
     const users = (overview || []).map(u => ({...u,...(profileMap[u.user_id] || {})}));
+    state.adminAccessUsersV320 = users;
+    state.adminAccessFeeMapV320 = Object.fromEntries((accessFees || []).map(row => [row.user_id,row]));
     const allowed = state.profile.role === "superadmin" ? users : users.filter(u => u.role === "clipper");
     const roleFilter = state.accessRoleFilter || "clipper", activityFilter = state.accessActivityFilter || "all";
     let visible = roleFilter === "all" ? allowed : roleFilter === "admin" ? allowed.filter(u => ["admin","superadmin"].includes(u.role)) : allowed.filter(u => u.role === roleFilter);
     visible = visible.filter(u => { const k=presenceInfo(u).key; if(activityFilter==="all")return true; if(activityFilter==="online")return k==="online"; if(activityFilter==="warning")return ["low","recent"].includes(k); if(activityFilter==="inactive")return ["inactive","never"].includes(k); if(activityFilter==="never")return k==="never"; return true; });
-    const cards = visible.map(u => { const access=effectiveLastAccess(u); return `<div class="access-user-card access-user-card-v232" data-search-user="${esc(`${u.username} ${u.names||""} ${u.surnames||""} ${u.phone||""}`.toLowerCase())}"><div class="access-user-top">${profileAvatarMarkup(u,"small")}<div class="access-user-id"><strong>${esc(u.names?`${u.names} ${u.surnames||""}`.trim():`@${u.username}`)}</strong><small>@${esc(u.username)} · ${u.role==="superadmin"?"Superadmin":u.role==="admin"?"Administrador":"Clipero"}</small></div><span class="pill ${u.active?"pill-green":"pill-red"}">${u.active?"Activo":"Suspendido"}</span></div>${presenceHtml(u)}<div class="login-meta-grid"><div><span>Último acceso</span><b>${access?dateTimeLabel(access):"Sin registro"}</b></div><div><span>Ingresos</span><b>${num(u.login_count||0)}</b></div><div><span>${u.role==="clipper"?"Pago":"Creado"}</span><b>${u.role==="clipper"?(u.payment_account?paymentMethodLabel(u.payment_method):"Pendiente"):dateOnlyLabel(u.created_at)}</b></div></div><button class="btn btn-secondary btn-sm btn-block" data-open-user="${u.user_id}">Administrar</button></div>`; }).join("");
-    $("#content").innerHTML = `<div class="card compact-card access-center-v232"><div class="card-head"><div><h2>Usuarios</h2><p>${allowed.length} accesos · ${allowed.filter(u=>presenceInfo(u).key==="online").length} en línea</p></div><div class="actions">${roleFilter==="clipper"?`<button id="requestAllPayBtn" class="btn btn-secondary">${uiIcon("wallet",15)} Solicitar datos</button>`:""}<button id="createClipperBtn" class="btn btn-primary">${uiIcon("plus",15)} Crear acceso</button></div></div><div class="access-toolbar"><div class="access-tabs"><button class="access-tab ${roleFilter==="clipper"?"active":""}" data-access-filter="clipper">Cliperos (${allowed.filter(u=>u.role==="clipper").length})</button>${state.profile.role==="superadmin"?`<button class="access-tab ${roleFilter==="admin"?"active":""}" data-access-filter="admin">Administradores (${allowed.filter(u=>["admin","superadmin"].includes(u.role)).length})</button><button class="access-tab ${roleFilter==="all"?"active":""}" data-access-filter="all">Todos</button>`:""}</div><div class="actions"><select id="activityFilter"><option value="all" ${activityFilter==="all"?"selected":""}>Toda actividad</option><option value="online" ${activityFilter==="online"?"selected":""}>En línea</option><option value="warning" ${activityFilter==="warning"?"selected":""}>Baja actividad</option><option value="inactive" ${activityFilter==="inactive"?"selected":""}>Inactivos</option><option value="never" ${activityFilter==="never"?"selected":""}>Sin actividad registrada</option></select><label class="access-search">${uiIcon("user",14)} <input id="accessSearch" placeholder="Buscar usuario, nombre o celular"></label></div></div><div class="access-card-grid" id="accessGrid">${cards||'<div class="empty">No hay usuarios con este filtro.</div>'}</div></div>`;
-    $("#createClipperBtn").addEventListener("click",openCreateUserModal);
+    const clipperFees = allowed.filter(u=>u.role==="clipper").map(u=>state.adminAccessFeeMapV320[u.user_id]).filter(Boolean);
+    const blockedCount = clipperFees.filter(f=>f.can_upload===false).length;
+    const reviewCount = clipperFees.filter(f=>f.fee_status==="proof_uploaded").length;
+    const cards = visible.map(u => {
+      const access=effectiveLastAccess(u);
+      const fee = u.role === "clipper" ? state.adminAccessFeeMapV320[u.user_id] : null;
+      const feeBlock = u.role === "clipper" ? `<div class="access-fee-card-v320">
+        <div><span>Cobro plataforma</span><b>${fee?.fee_id ? money(fee.amount || 0) : "Sin asignar"}</b></div>
+        <div>${adminAccessFeeBadgeV320(fee)}<small>${fee?.can_upload===false?"Subida bloqueada":"Subida habilitada"}</small></div>
+      </div>` : "";
+      return `<div class="access-user-card access-user-card-v232 access-user-card-v320" data-search-user="${esc(`${u.username} ${u.names||""} ${u.surnames||""} ${u.phone||""}`.toLowerCase())}">
+        <div class="access-user-top">${profileAvatarMarkup(u,"small")}<div class="access-user-id"><strong>${esc(u.names?`${u.names} ${u.surnames||""}`.trim():`@${u.username}`)}</strong><small>@${esc(u.username)} · ${u.role==="superadmin"?"Superadmin":u.role==="admin"?"Administrador":"Clipero"}</small></div><span class="pill ${u.active?"pill-green":"pill-red"}">${u.active?"Activo":"Suspendido"}</span></div>
+        ${presenceHtml(u)}
+        <div class="login-meta-grid"><div><span>Último acceso</span><b>${access?dateTimeLabel(access):"Sin registro"}</b></div><div><span>Ingresos</span><b>${num(u.login_count||0)}</b></div><div><span>${u.role==="clipper"?"Datos para recibir pago":"Creado"}</span><b>${u.role==="clipper"?(u.payment_account?paymentMethodLabel(u.payment_method):"Pendiente"):dateOnlyLabel(u.created_at)}</b></div></div>
+        ${feeBlock}
+        <div class="access-user-actions-v320">${u.role==="clipper"?`<button class="btn btn-primary btn-sm" data-access-fee-user="${u.user_id}">${uiIcon("wallet",14)} ${fee?.fee_id?"Cobro":"Asignar cobro"}</button>`:""}<button class="btn btn-secondary btn-sm" data-open-user="${u.user_id}">Administrar</button></div>
+      </div>`;
+    }).join("");
+    $("#content").innerHTML = `<section class="access-overview-v320"><div><span><small>Cliperos</small><b>${allowed.filter(u=>u.role==="clipper").length}</b></span><span class="${blockedCount?"warn":""}"><small>Bloqueados por pago</small><b>${blockedCount}</b></span><span class="${reviewCount?"review":""}"><small>Comprobantes por revisar</small><b>${reviewCount}</b></span></section>
+      <div class="card compact-card access-center-v232 access-center-v320"><div class="card-head"><div><h2>Usuarios</h2><p>${allowed.length} accesos · ${allowed.filter(u=>presenceInfo(u).key==="online").length} en línea</p></div><div class="actions">${roleFilter==="clipper"?`<button id="configureAccessQrBtnV320" class="btn btn-secondary">${uiIcon("wallet",15)} QR de cobro</button><button id="requestAllPayBtn" class="btn btn-ghost">${uiIcon("wallet",15)} Solicitar datos</button>`:""}<button id="createClipperBtn" class="btn btn-primary">${uiIcon("plus",15)} Crear acceso</button></div></div>
+      <div class="access-toolbar"><div class="access-tabs"><button class="access-tab ${roleFilter==="clipper"?"active":""}" data-access-filter="clipper">Cliperos (${allowed.filter(u=>u.role==="clipper").length})</button>${state.profile.role==="superadmin"?`<button class="access-tab ${roleFilter==="admin"?"active":""}" data-access-filter="admin">Administradores (${allowed.filter(u=>["admin","superadmin"].includes(u.role)).length})</button><button class="access-tab ${roleFilter==="all"?"active":""}" data-access-filter="all">Todos</button>`:""}</div><div class="actions"><select id="activityFilter"><option value="all" ${activityFilter==="all"?"selected":""}>Toda actividad</option><option value="online" ${activityFilter==="online"?"selected":""}>En línea</option><option value="warning" ${activityFilter==="warning"?"selected":""}>Baja actividad</option><option value="inactive" ${activityFilter==="inactive"?"selected":""}>Inactivos</option><option value="never" ${activityFilter==="never"?"selected":""}>Sin actividad registrada</option></select><label class="access-search">${uiIcon("user",14)} <input id="accessSearch" placeholder="Buscar usuario, nombre o celular"></label></div></div>
+      <div class="access-card-grid" id="accessGrid">${cards||'<div class="empty">No hay usuarios con este filtro.</div>'}</div></div>`;
+    $("#createClipperBtn")?.addEventListener("click",openCreateUserModal);
+    $("#configureAccessQrBtnV320")?.addEventListener("click",openAccessPaymentSettingsAdminV320);
     $("#requestAllPayBtn")?.addEventListener("click",async()=>{if(!confirm("¿Solicitar datos de pago a todos los cliperos activos que aún no los registraron?"))return;try{const count=await query(state.supabase.rpc("admin_request_payment_data_all"));toast(`Solicitud activada para ${count} clipero(s)`,"success");await renderAdminClippers();}catch(error){toast(errorMessage(error),"error");}});
     $$('[data-access-filter]').forEach(b=>b.addEventListener("click",()=>{state.accessRoleFilter=b.dataset.accessFilter;renderAdminClippers();}));
-    $("#activityFilter").addEventListener("change",e=>{state.accessActivityFilter=e.target.value;renderAdminClippers();});
-    $("#accessSearch").addEventListener("input",e=>{const term=e.target.value.trim().toLowerCase();$$('[data-search-user]').forEach(card=>card.classList.toggle("hidden",term&&!card.dataset.searchUser.includes(term)));});
+    $("#activityFilter")?.addEventListener("change",e=>{state.accessActivityFilter=e.target.value;renderAdminClippers();});
+    $("#accessSearch")?.addEventListener("input",e=>{const term=e.target.value.trim().toLowerCase();$$('[data-search-user]').forEach(card=>card.classList.toggle("hidden",term&&!card.dataset.searchUser.includes(term)));});
+    $$('[data-access-fee-user]').forEach(b=>b.addEventListener("click",()=>openAccessFeeAdminModalV320(b.dataset.accessFeeUser)));
     $$('[data-open-user]').forEach(b=>b.addEventListener("click",()=>{state.selectedClipperId=b.dataset.openUser;state.selectedClipperTab="info";renderPage(true);}));
   }
 
@@ -5006,7 +5374,12 @@
   }
 
   async function loadClipperCurrentData() {
-    try { await state.supabase.rpc("clipcontrol_auto_submit_due_reports_v234"); } catch (_) {}
+    // Fallback único por sesión por compatibilidad. El cierre periódico real se
+    // intenta ejecutar en Supabase con pg_cron (SQL 31), no cada minuto por navegador.
+    if (!state.autoSubmitFallbackCheckedV320) {
+      state.autoSubmitFallbackCheckedV320 = true;
+      try { await state.supabase.rpc("clipcontrol_auto_submit_due_reports_v234"); } catch (_) {}
+    }
     const [accounts,settings]=await Promise.all([
       query(state.supabase.from("social_accounts").select("*").eq("user_id",state.profile.id).order("created_at")),
       query(state.supabase.from("app_settings").select("*").eq("id",1).single()),
@@ -5021,17 +5394,19 @@
       query(state.supabase.from("weekly_report_platform_summary").select("*").eq("report_id",reportId).order("platform")),
     ]);
     state.currentSummary=summary; state.videos=videos; state.observations=observations; state.platformSummary=platformSummary||[];
+    await refreshMyAccessPaymentV320();
   }
 
   let deadlineWatcherV234 = null;
   function startDeadlineWatcherV234() {
     if (deadlineWatcherV234) clearInterval(deadlineWatcherV234);
+    // El cierre real se ejecuta en Supabase (pg_cron, SQL 31). El navegador solo
+    // refresca la vista cerca del vencimiento y nunca intenta cerrar reportes.
     deadlineWatcherV234 = setInterval(async()=>{
-      if (!state.profile || !state.supabase) return;
-      try {
-        const result=await query(state.supabase.rpc("clipcontrol_auto_submit_due_reports_v234"));
-        if (Number(result||0)>0 && state.profile.role==="clipper") await renderPage(true);
-      } catch (_) {}
+      if (state.profile?.role !== "clipper" || !state.currentSummary?.submission_deadline) return;
+      const now = Date.now();
+      const deadline = new Date(state.currentSummary.submission_deadline).getTime();
+      if (Math.abs(now - deadline) < 2 * 60 * 1000) await renderPage(true);
     },60000);
   }
 
@@ -5045,11 +5420,13 @@
     avatar.classList.toggle("avatar-clickable",p.role==="clipper");
     avatar.title=p.role==="clipper"?"Cambiar foto de perfil":"";
     avatar.onclick=p.role==="clipper"?()=>navigate("profile"):null;
+    document.body.classList.toggle("cc-admin-ui-v251",["admin","superadmin"].includes(p.role));
     buildNav(); startDeadlineWatcherV234();
   }
 
   function errorMessage(error) {
     const msg=error?.message||String(error||"Error inesperado");
+    if(/ACCESS_PAYMENT_REQUIRED|clipper_access_fees|clipper_access_payment_settings|clipcontrol-payment-qr|clipcontrol-payment-proofs|access_fee|access_payment|v320/i.test(msg))return "El acceso para subir clips está bloqueado por el control de pago o falta ejecutar SQL 31 de ClipControl 3.2.";
     if(/v280|payment_cap_settings_v280|clipper_payment_cap_overrides_v280|clipcontrol_account_payments_v280|clipcontrol_motivation_v280/i.test(msg))return "Falta ejecutar el SQL 28 de ClipControl 2.8.0 en Supabase.";
     if(/admin_quick_review_report_v234|clipcontrol_auto_submit_due_reports_v234|clipcontrol_uncapped_platform_pay/i.test(msg))return "Falta ejecutar 24_clipcontrol_pago_sin_techo_autoenvio.sql en Supabase.";
     if(/profile-avatars|avatar_url|update_my_avatar_url|admin_return_report_to_draft/i.test(msg))return "Falta ejecutar 23_clipcontrol_ui_profile_draft.sql en Supabase.";
@@ -5367,7 +5744,6 @@
 
   async function renderAdminReportsV300() {
     setHeader("Inicio", "Control del período");
-    try { await state.supabase.rpc("clipcontrol_auto_submit_due_reports_v234"); } catch (_) {}
     const periods = await query(state.supabase.from("reporting_periods").select("*").order("start_date",{ascending:false}).limit(20));
     if (!state.adminWeek) state.adminWeek = state.activePeriod?.start_date || periods?.[0]?.start_date || currentWeekStartISO();
     const reports = await query(state.supabase.from("weekly_report_summary").select("*").eq("week_start",state.adminWeek).order("total_views",{ascending:false}));
@@ -5477,16 +5853,17 @@
     const fallbackAccount=activeAccounts()[0];
     const accountName=motivation?.my_account_name||fallbackAccount?.account_name||"Mi cuenta";
     const basePay=accountPayments.length?accountPayments.reduce((sum,row)=>sum+Number(row.final_pay||0),0):Number(s?.calculated_base_pay||0);
-    const editable=reportEditable(s);
+    const editable=reportEditable(s) && clipperUploadEnabledV320();
     const deadlinePassed=s?.submission_deadline&&Date.now()>new Date(s.submission_deadline).getTime();
     const videos=[...state.videos].sort((a,b)=>Number(b.views||0)-Number(a.views||0)).slice(0,5);
     const accountMap=Object.fromEntries(state.accounts.map(a=>[a.id,a]));
-    $("#content").innerHTML=`<section class="creator-overview-v300"><div><span>${deadlinePassed?"CERRADO":"● EN VIVO"}</span><h2>${esc(accountName)}</h2><small>${state.videos.length} videos · ${num(state.videos.reduce((sum,v)=>sum+Number(v.views||0),0))} vistas</small></div><div><small>PAGO ESTIMADO</small><strong>${money(basePay)}</strong></div></section>
+    $("#content").innerHTML=`${clipperAccessPaymentMarkupV320()}<section class="creator-overview-v300"><div><span>${deadlinePassed?"CERRADO":"● EN VIVO"}</span><h2>${esc(accountName)}</h2><small>${state.videos.length} videos · ${num(state.videos.reduce((sum,v)=>sum+Number(v.views||0),0))} vistas</small></div><div><small>PAGO ESTIMADO</small><strong>${money(basePay)}</strong></div></section>
       ${clipperMotivationMarkupV300(motivation)}
       ${clipperAccountCardsV280(accountPayments)}
-      <section class="card clipper-home-actions-v300"><button id="quickAddBtn" class="btn btn-primary" ${!editable?"disabled":""}>${uiIcon("plus",14)} Agregar videos</button><button id="viewVideosBtn" class="btn btn-secondary">Mis videos</button><button id="refreshMyMetricsBtn" class="btn btn-ghost">${uiIcon("sync",14)} Actualizar</button></section>
+      <section class="card clipper-home-actions-v300"><button id="quickAddBtn" class="btn btn-primary" ${!editable?"disabled":""}>${uiIcon("plus",14)} ${clipperUploadEnabledV320()?"Agregar videos":"Pago pendiente"}</button><button id="viewVideosBtn" class="btn btn-secondary">Mis videos</button><button id="refreshMyMetricsBtn" class="btn btn-ghost">${uiIcon("sync",14)} Actualizar</button></section>
       <section class="card clipper-top-videos-v300"><div class="admin-section-head-v300"><div><span class="section-eyebrow">TU RENDIMIENTO</span><h2>Mejores videos</h2></div></div><div class="clipper-top-list-v300">${videos.map((video,index)=>`<a href="${esc(video.video_url)}" target="_blank" rel="noopener"><span>${index+1}</span><div><b>${esc(video.external_title||`Video ${video.position||""}`)}</b><small>${esc(accountMap[video.account_id]?.account_name||platformLabel(video.platform))}</small></div><strong>${num(video.views)}</strong></a>`).join("")||'<div class="empty">Aún sin videos.</div>'}</div></section>`;
     $("#quickAddBtn")?.addEventListener("click",handleQuickRegisterAction);
+    bindClipperAccessPaymentActionsV320($("#content"));
     $("#viewVideosBtn")?.addEventListener("click",()=>navigate("videos"));
     $("#refreshMyMetricsBtn")?.addEventListener("click",async()=>{showLoading(true);try{await runLiveMetricSync(false);await loadClipperCurrentData();await renderClipperDashboardV300();}finally{showLoading(false);}});
     animateDynamicNumbers($("#content"));
@@ -5546,28 +5923,36 @@
   async function renderAdminReports() { return renderAdminReportsV300(); }
   function renderClipperVideos() { return renderClipperVideosV240(); }
 
-  // Diagnóstico mínimo de infraestructura. Facebook ya no tiene una ruta especial.
-  window.clipcontrolDebugUI = () => ({version:CLIPCONTROL_FRONTEND_VERSION, ui:document.documentElement.dataset.clipcontrolUi, page:state.page, role:state.profile?.role});
-  window.clipcontrolDebugYoutube = () => invokeProcessor({ action:"youtube_public_feed", limit:15 });
-  window.clipcontrolDebugHealth = () => invokeProcessor({ action:"health" });
-  window.clipcontrolDebugFacebook = (url) => invokeProcessor({ action:"facebook_probe", url });
+  // Herramientas de diagnóstico solo cuando debug=true en supabase-config.js.
+  if (window.CLIPCONTROL_SUPABASE?.debug === true) {
+    window.clipcontrolDebugUI = () => ({version:CLIPCONTROL_FRONTEND_VERSION, ui:document.documentElement.dataset.clipcontrolUi, page:state.page, role:state.profile?.role});
+    window.clipcontrolDebugYoutube = () => invokeProcessor({ action:"youtube_public_feed", limit:15 });
+    window.clipcontrolDebugHealth = () => invokeProcessor({ action:"health" });
+    window.clipcontrolDebugFacebook = (url) => invokeProcessor({ action:"facebook_probe", url });
+    window.clipcontrolDebugFrontend = () => ({
+      version: CLIPCONTROL_FRONTEND_VERSION,
+      source: "app-v3.2.0-access-gate.js",
+      scripts: [...document.scripts].map((script) => script.src).filter(Boolean),
+      samples: {
+        facebook_reel: videoUrlValidation("https://www.facebook.com/reel/1579243183893033"),
+        facebook_share: videoUrlValidation("https://www.facebook.com/share/p/1Gt2mqMZu9/"),
+        tiktok_short: videoUrlValidation("https://vt.tiktok.com/ZSVNuNh39/"),
+        youtube_short: videoUrlValidation("https://youtube.com/shorts/wSrn2PM4o6o?si=JRei8DWRyfFQpCSo"),
+        instagram_reel: videoUrlValidation("https://www.instagram.com/reel/ABC123/")
+      }
+    });
+  }
 
   window.addEventListener("DOMContentLoaded", init);
 
-  window.clipcontrolDebugFrontend = () => ({
-    version: CLIPCONTROL_FRONTEND_VERSION,
-    source: "app-v3.1.0-publication-date.js",
-    scripts: [...document.scripts].map((script) => script.src).filter(Boolean),
-    samples: {
-      facebook_reel: videoUrlValidation("https://www.facebook.com/reel/1579243183893033"),
-      facebook_share: videoUrlValidation("https://www.facebook.com/share/p/1Gt2mqMZu9/"),
-      tiktok_short: videoUrlValidation("https://vt.tiktok.com/ZSVNuNh39/"),
-      youtube_short: videoUrlValidation("https://youtube.com/shorts/wSrn2PM4o6o?si=JRei8DWRyfFQpCSo"),
-      instagram_reel: videoUrlValidation("https://www.instagram.com/reel/ABC123/")
-    }
-  });
-
 })();
+
+
+
+
+
+
+
 
 
 
