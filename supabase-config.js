@@ -1,7 +1,7 @@
 // La publishable key está diseñada para usarse en el navegador con RLS activo.
 // Nunca coloques aquí una secret key ni service_role.
 window.CLIPCONTROL_SUPABASE = {
-  version: "3.2.0-access-gate",
+  version: "3.3.0-threshold-no-date",
   url: "https://ngtdobnwgwqimdjzzudl.supabase.co",
   publishableKey: "sb_publishable_FUfr0aTUIkSs5pkdPODoLg_fdTsLENz",
   // Slug real que aparece en la URL de tu Edge Function.
