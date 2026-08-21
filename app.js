@@ -1,7 +1,7 @@
 (() => {
-  const CLIPCONTROL_FRONTEND_VERSION = "3.2.0-access-gate";
+  const CLIPCONTROL_FRONTEND_VERSION = "3.2.1-visual-home";
   window.CLIPCONTROL_FRONTEND_VERSION = CLIPCONTROL_FRONTEND_VERSION;
-  document.documentElement.dataset.clipcontrolUi = "3.2.0-access-gate";
+  document.documentElement.dataset.clipcontrolUi = "3.2.1-visual-home";
   "use strict";
 
   const PLATFORMS = {
@@ -484,14 +484,14 @@
   async function openAccessPaymentSettingsAdminV320() {
     const settings = await fetchAccessPaymentSettingsV320();
     const qrUrl = accessQrPublicUrlV320(settings.qr_path);
-    openModal(`<div class="modal-head"><div><h2>QR de cobro</h2><p>Este QR será visible para todos los cliperos que tengan un cobro pendiente.</p></div><button id="accessQrX" class="modal-close">×</button></div>
+    openModal(`<div class="modal-head"><div><h2>QR de cobro</h2><p>Configura el QR general. Solo se bloquea al clipero al que le asignes un cobro pendiente.</p></div><button id="accessQrX" class="modal-close">×</button></div>
       <form id="accessQrForm"><div class="modal-body">
         ${qrUrl ? `<div class="admin-qr-preview-v320"><img src="${esc(qrUrl)}" alt="QR actual"><span>QR actual</span></div>` : '<div class="alert alert-warning"><div>QR</div><div><strong>Aún no configurado</strong><p>Sube la imagen del QR que usarán los cliperos.</p></div></div>'}
         <div class="form-grid compact-form" style="margin-top:14px">
           <label>Nombre del cobro<input name="payment_label" maxlength="120" value="${esc(settings.payment_label || "Pago de acceso a ClipControl")}"></label>
           <label>Nuevo QR<input id="accessQrFile" type="file" accept="image/jpeg,image/png,image/webp"><small>Déjalo vacío para conservar el actual.</small></label>
           <label class="full">Instrucciones<textarea name="instructions" maxlength="1000" rows="3">${esc(settings.instructions || "")}</textarea></label>
-          <label class="full checkbox-label"><input name="payment_required" type="checkbox" ${settings.payment_required === false ? "" : "checked"}> Exigir pago de acceso a los cliperos</label>
+          <label class="full checkbox-label"><input name="payment_required" type="checkbox" ${settings.payment_required === false ? "" : "checked"}> Activar control de cobros ocasionales</label>
         </div>
       </div><div class="modal-foot"><button type="button" id="accessQrCancel" class="btn btn-ghost">Cancelar</button><button id="accessQrSave" class="btn btn-primary">Guardar configuración</button></div></form>`, "small", layer => {
         $("#accessQrX", layer).addEventListener("click", closeModal);
@@ -554,7 +554,7 @@
           <label class="full">Nota administrativa<textarea name="note" rows="2" maxlength="500" placeholder="Concepto o detalle del cobro">${unresolved ? esc(fee.admin_note || "") : ""}</textarea></label>
           <div class="full actions"><button class="btn btn-primary">${unresolved ? "Reasignar cobro" : "Asignar cobro"}</button>${unresolved ? '<small class="muted">Reasignar reemplaza el cobro pendiente actual.</small>' : ""}</div>
         </form>
-        ${unresolved ? `<div class="divider"></div><div class="admin-access-review-v320"><h3>Revisar acceso</h3><label>Comentario<textarea id="accessFeeReviewNoteV320" rows="2" maxlength="500" placeholder="Motivo opcional"></textarea></label><div class="actions">${fee.fee_status === "proof_uploaded" ? '<button class="btn btn-success" data-access-review="approve">Aprobar pago</button><button class="btn btn-danger" data-access-review="reject">Rechazar captura</button>' : '<button class="btn btn-success" data-access-review="approve">Marcar como pagado</button>'}<button class="btn btn-ghost" data-access-review="waive">Exonerar</button></div></div>` : ""}
+        ${unresolved ? `<div class="divider"></div><div class="admin-access-review-v320"><h3>Revisar acceso</h3><label>Comentario<textarea id="accessFeeReviewNoteV320" rows="2" maxlength="500" placeholder="Motivo opcional"></textarea></label><div class="actions">${fee.fee_status === "proof_uploaded" ? '<button class="btn btn-success" data-access-review="approve">Aprobar pago</button><button class="btn btn-danger" data-access-review="reject">Rechazar captura</button>' : '<button class="btn btn-success" data-access-review="approve">Marcar como pagado</button>'}<button class="btn btn-ghost" data-access-review="waive">Exonerar</button><button class="btn btn-ghost" data-access-review="cancel">Cancelar cobro</button></div></div>` : ""}
       </div><div class="modal-foot"><button id="accessFeeClose" class="btn btn-ghost">Cerrar</button></div>`, "medium", layer => {
         $("#accessFeeX", layer).addEventListener("click", closeModal);
         $("#accessFeeClose", layer).addEventListener("click", closeModal);
@@ -586,12 +586,12 @@
         $$("[data-access-review]", layer).forEach(button => button.addEventListener("click", async () => {
           const action = button.dataset.accessReview;
           const note = $("#accessFeeReviewNoteV320", layer)?.value.trim() || null;
-          const question = action === "approve" ? "¿Aprobar este pago y habilitar la subida de clips?" : action === "reject" ? "¿Rechazar el comprobante y mantener bloqueado el acceso?" : "¿Exonerar este cobro y habilitar la subida de clips?";
+          const question = action === "approve" ? "¿Aprobar este pago y habilitar la subida de clips?" : action === "reject" ? "¿Rechazar el comprobante y mantener bloqueado el acceso?" : action === "cancel" ? "¿Cancelar este cobro y habilitar al clipero?" : "¿Exonerar este cobro y habilitar la subida de clips?";
           if (!confirm(question)) return;
           try {
             await query(state.supabase.rpc("admin_review_access_fee_v320", { p_fee_id: fee.fee_id, p_action: action, p_note: note }));
             closeModal();
-            toast(action === "reject" ? "Comprobante rechazado" : "Acceso habilitado", "success");
+            toast(action === "reject" ? "Comprobante rechazado" : action === "cancel" ? "Cobro cancelado. Acceso habilitado" : "Acceso habilitado", "success");
             await renderAdminClippers();
           } catch (error) { toast(errorMessage(error), "error"); }
         }));
@@ -3700,6 +3700,7 @@
       user: '<path d="M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
       users: '<path d="M16 21v-1a6 6 0 0 0-6-6H6a6 6 0 0 0-6 6v1M8 10a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM17 3.2a4 4 0 0 1 0 7.6M24 21v-1a6 6 0 0 0-4.5-5.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
       report: '<path d="M7 3h8l4 4v14H7V3Zm8 0v5h4M10 12h6M10 16h6M10 8h2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+      excel: '<path d="M5 3h10l4 4v14H5V3Zm10 0v5h4M8.5 11l4 6m0-6-4 6M14.8 12H17M14.8 15H17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>',
       wallet: '<path d="M3 7a3 3 0 0 1 3-3h12v4M3 7h17a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H6a3 3 0 0 1-3-3V7Zm14 6h4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
       megaphone: '<path d="m4 13 2 6h3l-1.5-5M5 9v5h3l9 4V5L8 9H5Zm12 1a3 3 0 0 1 0 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
       settings: '<path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Zm7.2-3.2a7 7 0 0 0-.1-1l2-1.6-2-3.4-2.5 1a8 8 0 0 0-1.7-1L14.5 3h-5l-.4 3a8 8 0 0 0-1.7 1L5 6 3 9.4 5 11a7 7 0 0 0 0 2l-2 1.6L5 18l2.4-1a8 8 0 0 0 1.7 1l.4 3h5l.4-3a8 8 0 0 0 1.7-1l2.4 1 2-3.4-2-1.6a7 7 0 0 0 .2-1Z" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linejoin="round"/>',
@@ -4943,14 +4944,20 @@
           videos = await query(state.supabase.from("videos").select("*").eq("report_id",reportId).is("deleted_at",null).order("position"));
         } catch (dateError) { console.warn("report publication dates", dateError); }
       }
+      // En evaluación administrativa priorizamos lo que más rendimiento tuvo.
+      videos = [...videos].sort((a,b)=>Number(b.views||0)-Number(a.views||0) || Number(b.likes||0)-Number(a.likes||0) || Number(a.position||0)-Number(b.position||0));
       state.videos=videos; state.accounts=accounts;
       state.platformRuleMap = Object.fromEntries((rules||[]).map(rule=>[rule.platform,rule]));
       const rowMap=Object.fromEntries((platforms||[]).map(row=>[row.platform,row]));
       const registered=[...new Set(accounts.filter(a=>a.active).map(a=>a.platform).concat((platforms||[]).filter(r=>Number(r.video_count||0)>0).map(r=>r.platform)))];
       const normalized=registered.map(platform=>normalizedPlatformRow(platform,rowMap[platform]));
-      const accountPayRowsV280=await fetchAccountPaymentsV280(reportId); const basePay=accountPayRowsV280.length?Math.round(accountPayRowsV280.reduce((sum,row)=>sum+Number(row.final_pay||0),0)*100)/100:Math.round(normalized.reduce((sum,row)=>sum+uncappedPlatformPay(row),0)*100)/100;
+      const accountPayRowsV280=await fetchAccountPaymentsV280(reportId);
+      const basePay=accountPayRowsV280.length?Math.round(accountPayRowsV280.reduce((sum,row)=>sum+Number(row.final_pay||0),0)*100)/100:Math.round(normalized.reduce((sum,row)=>sum+uncappedPlatformPay(row),0)*100)/100;
       const cards=`<div class="report-platform-grid report-platform-grid-v234">${normalized.map(row=>{const raw=row.pay_enabled?platformProgressRaw(row):0;return `<div class="report-platform-card report-platform-card-v234">${platformBadge(row.platform,true)}<strong>${num(row.views)}</strong><small>${row.video_count} videos · ${row.pay_enabled?`${Math.round(raw)}% de referencia`:"solo métricas"}</small><div class="report-pay"><span>${row.pay_enabled?`${money(row.max_base_pay)} / ${num(row.target_views)} vistas`:"No remunerado"}</span><b>${row.pay_enabled?money(uncappedPlatformPay(row)):"—"}</b></div></div>`;}).join("")}</div>`;
-      openModal(`<div class="modal-head sticky-modal-head"><div><h2>${esc(summary.names||summary.username)} ${esc(summary.surnames||"")}</h2><p>${periodRangeLabel(summary)} · @${esc(summary.username)}</p></div><div class="actions">${statusBadge(summary.status)}<button id="adminReportX" class="modal-close">×</button></div></div><div class="admin-action-bar"><div class="action-summary"><span><small>Videos</small><b>${summary.video_count}</b></span><span><small>Pago por vistas</small><b>${money(basePay)}</b></span><span><small>Bono adicional</small><b>${money(summary.bonus_pay||0)}</b></span></div><div class="actions"><button data-review-action="draft" class="btn btn-elaboration btn-sm" ${summary.status==="draft"||["paid","closed","expired"].includes(summary.status)?"disabled":""}>↩ Seguir en elaboración</button><button data-review-action="review" class="btn btn-secondary btn-sm">Revisión</button><button data-review-action="observe" class="btn btn-warning btn-sm">Observar</button><button data-review-action="approve" class="btn btn-success btn-sm">Aprobar</button><button data-review-action="paid" class="btn btn-dark btn-sm">Pagado</button></div></div><div class="modal-body compact-modal-body">${adminAccountPaymentBreakdownV280(accountPayRowsV280)}${cards}${paymentFormulaNoteV280(accountPayRowsV280)}<div class="payment-request-box"><h3>💳 Datos de pago</h3><p>${summary.payment_account?`${paymentMethodLabel(summary.payment_method)} · ${esc(summary.payment_holder||summary.names||"")} · ${esc(summary.payment_account)}`:"Aún no registrados."}</p></div><div class="review-options" style="margin-top:12px"><label>Bono adicional<input id="bonusPayInput" type="number" min="0" step="0.01" value="${summary.bonus_pay??0}"><small class="muted">Este bono es aparte del pago automático por vistas.</small></label><label>Número de operación<input id="transactionInput" value="${esc(summary.transaction_number||"")}" placeholder="Opcional"></label><label class="full">Nota / observación<textarea id="reviewNote" rows="2">${esc(summary.admin_note||"")}</textarea></label></div><div class="card-head" style="margin-top:14px"><div><h3>Videos</h3><p>Detalle de enlaces y métricas.</p></div><button id="syncReportNow" class="btn btn-secondary btn-sm">↻ Actualizar métricas</button></div>${videosTable(videos,accounts,true)}${observations.length?`<div class="divider"></div><h3>Observaciones</h3>${observations.map(o=>`<div class="alert ${o.resolved?"alert-info":"alert-danger"} compact-alert"><div>📝</div><div><strong>${o.resolved?"Resuelta":"Pendiente"}</strong><p>${esc(o.message)} · ${dateTimeLabel(o.created_at)}</p></div></div>`).join("")}`:""}</div><div class="modal-foot"><span class="small muted">Última métrica: ${dateTimeLabel(summary.metrics_last_checked_at)}</span><button id="adminReportClose" class="btn btn-ghost">Cerrar</button></div>`,"",layer=>{
+      const paymentAccountText = summary.payment_account ? `${paymentMethodLabel(summary.payment_method)} · ${summary.payment_holder||summary.names||""} · ${summary.payment_account}` : "Aún no registrados";
+      const paymentDetails = `<details class="admin-payment-details-v300"><summary>${uiIcon("wallet",15)}<span><b>Datos y cálculo de pago</b><small>${esc(paymentAccountText)}</small></span>${uiIcon("arrow",14)}</summary><div class="admin-payment-details-body-v300">${adminAccountPaymentBreakdownV280(accountPayRowsV280)}${paymentFormulaNoteV280(accountPayRowsV280)}<div class="admin-payment-account-v300"><span>Cuenta de pago</span><b>${summary.payment_account?`${paymentMethodLabel(summary.payment_method)} · ${esc(summary.payment_account)}`:"Pendiente"}</b><small>${esc(summary.payment_holder||summary.names||"")}</small></div></div></details>`;
+
+      openModal(`<div class="modal-head sticky-modal-head"><div><h2>${esc(summary.names||summary.username)} ${esc(summary.surnames||"")}</h2><p>${periodRangeLabel(summary)} · @${esc(summary.username)}</p></div><div class="actions">${statusBadge(summary.status)}<button id="adminReportX" class="modal-close">×</button></div></div><div class="admin-action-bar"><div class="action-summary"><span><small>Videos</small><b>${summary.video_count}</b></span><span><small>Pago por vistas</small><b>${money(basePay)}</b></span><span><small>Bono adicional</small><b>${money(summary.bonus_pay||0)}</b></span></div><div class="actions"><button data-review-action="draft" class="btn btn-elaboration btn-sm" ${summary.status==="draft"||["paid","closed","expired"].includes(summary.status)?"disabled":""}>↩ Seguir en elaboración</button><button data-review-action="review" class="btn btn-secondary btn-sm">Revisión</button><button data-review-action="observe" class="btn btn-warning btn-sm">Observar</button><button data-review-action="approve" class="btn btn-success btn-sm">Aprobar</button><button data-review-action="paid" class="btn btn-dark btn-sm">Pagado</button></div></div><div class="modal-body compact-modal-body">${cards}${paymentDetails}<div class="review-options review-options-v300"><label>Bono adicional<input id="bonusPayInput" type="number" min="0" step="0.01" value="${summary.bonus_pay??0}"><small class="muted">Adicional al cálculo por vistas.</small></label><label>Número de operación<input id="transactionInput" value="${esc(summary.transaction_number||"")}" placeholder="Opcional"></label><label class="full">Nota / observación<textarea id="reviewNote" rows="2">${esc(summary.admin_note||"")}</textarea></label></div><div class="admin-video-section-head-v300"><div><span class="section-eyebrow">CONTENIDO</span><h3>Videos</h3><p>Ordenados de mayor a menor por vistas para evaluar más rápido.</p></div><div class="admin-video-head-actions-v300"><span class="video-sort-note-v300">${uiIcon("activity",13)} Más vistos primero</span><button id="syncReportNow" class="btn btn-secondary btn-sm">${uiIcon("sync",14)} Actualizar métricas</button></div></div>${videosTable(videos,accounts,true)}${observations.length?`<div class="divider"></div><h3>Observaciones</h3>${observations.map(o=>`<div class="alert ${o.resolved?"alert-info":"alert-danger"} compact-alert"><div>📝</div><div><strong>${o.resolved?"Resuelta":"Pendiente"}</strong><p>${esc(o.message)} · ${dateTimeLabel(o.created_at)}</p></div></div>`).join("")}`:""}</div><div class="modal-foot"><span class="small muted">Última métrica: ${dateTimeLabel(summary.metrics_last_checked_at)}</span><button id="adminReportClose" class="btn btn-ghost">Cerrar</button></div>`,"",layer=>{
         $("#adminReportX",layer).addEventListener("click",closeModal); $("#adminReportClose",layer).addEventListener("click",closeModal);
         $("#syncReportNow",layer).addEventListener("click",async()=>{$("#syncReportNow",layer).disabled=true;await syncReportMetrics(reportId);closeModal();await openAdminReportDetail(reportId);});
         $$('[data-edit-video]',layer).forEach(b=>b.addEventListener("click",()=>openEditVideoModal(b.dataset.editVideo,true)));
@@ -4958,7 +4965,7 @@
         $$('[data-sync-video]',layer).forEach(b=>b.addEventListener("click",async()=>{b.disabled=true;await syncVideoMetrics(b.dataset.syncVideo);closeModal();await openAdminReportDetail(reportId);}));
         $$('[data-review-action]',layer).forEach(button=>button.addEventListener("click",async()=>{
           const action=button.dataset.reviewAction,note=$("#reviewNote",layer).value.trim(),bonus=Number($("#bonusPayInput",layer).value||0),transaction=$("#transactionInput",layer).value.trim();
-          if(action==="observe"&&!note)return toast("Escribe el motivo de la observación.","error");
+          if(action==="observe"&&!note){ $("#reviewNote",layer)?.focus(); return toast("Escribe el motivo de la observación.","error"); }
           const confirmText=action==="draft"?"¿Devolver este reporte a En elaboración?":"¿Guardar esta evaluación con el pago calculado?";
           if(!confirm(confirmText))return; showLoading(true);
           try {
@@ -5743,7 +5750,6 @@
   }
 
   async function renderAdminReportsV300() {
-    setHeader("Inicio", "Control del período");
     const periods = await query(state.supabase.from("reporting_periods").select("*").order("start_date",{ascending:false}).limit(20));
     if (!state.adminWeek) state.adminWeek = state.activePeriod?.start_date || periods?.[0]?.start_date || currentWeekStartISO();
     const reports = await query(state.supabase.from("weekly_report_summary").select("*").eq("week_start",state.adminWeek).order("total_views",{ascending:false}));
@@ -5764,14 +5770,30 @@
       if (account.active !== false && !state.adminRegisteredPlatformsByUser[account.user_id].includes(account.platform)) state.adminRegisteredPlatformsByUser[account.user_id].push(account.platform);
     }
     const selectedPeriod = periods.find(period => period.start_date === state.adminWeek);
+    const periodName = selectedPeriod?.name || periodRangeLabel(selectedPeriod) || state.adminWeek;
+    const periodStatus = selectedPeriod?.is_active ? `● Período en vivo · ${periodName}` : `Período histórico · ${periodName}`;
+    setHeader("Inicio", periodStatus);
+    $("#pageSubtitle")?.classList.toggle("period-live-subtitle-v300", Boolean(selectedPeriod?.is_active));
+
     const totalViews = data.videos.reduce((sum,video) => sum + Number(video.views||0),0);
     const projected = reports.reduce((sum,report) => sum + reportDisplayTotal(report),0);
+    const pendingReview = reports.filter(report => ["sent","review","observed"].includes(report.status)).length;
     const accountMap = Object.fromEntries((data.accounts||[]).map(account=>[account.id,account]));
 
-    $("#content").innerHTML = `<section class="admin-command-hero admin-command-hero-v300"><div><span class="reports-kicker">${selectedPeriod?.is_active?"PERÍODO EN VIVO":"PERÍODO"}</span><h2>${esc(selectedPeriod?.name||periodRangeLabel(selectedPeriod)||state.adminWeek)}</h2><div class="admin-hero-stats-v300"><span><b>${reports.length}</b> cliperos</span><span><b>${data.videos.length}</b> videos</span><span><b>${num(totalViews)}</b> vistas</span><span><b>${money(projected)}</b> proyectado</span></div></div><div class="admin-home-tools-v300"><label class="period-select-v224">${uiIcon("history",14)}<select id="reportPeriodSelect">${periods.map(period=>`<option value="${period.start_date}" ${period.start_date===state.adminWeek?"selected":""}>${esc(period.name||periodRangeLabel(period))}${period.is_active?" · ACTIVO":""}</option>`).join("")}</select></label><button id="exportReportsBtnV300" class="icon-action" type="button" title="Exportar reporte segmentado">${uiIcon("report",16)}</button></div></section>
+    $("#content").innerHTML = `<section class="admin-command-hero admin-command-hero-v300">
+        <div class="admin-period-main-v300"><span class="reports-kicker">RESUMEN DEL PERÍODO</span><h2>${esc(periodName)}</h2><p>${dateOnlyLabel(selectedPeriod?.start_date || state.adminWeek)} — ${dateOnlyLabel(selectedPeriod?.end_date || reports[0]?.week_end)}</p></div>
+        <div class="admin-hero-stats-v300">
+          <span><small>Cliperos</small><b>${reports.length}</b></span>
+          <span><small>Videos</small><b>${data.videos.length}</b></span>
+          <span><small>Vistas</small><b>${num(totalViews)}</b></span>
+          <span><small>Por evaluar</small><b>${pendingReview}</b></span>
+          <span class="hero-pay-v300"><small>Proyectado</small><b>${money(projected)}</b></span>
+        </div>
+        <div class="admin-home-tools-v300"><label class="period-select-v224">${uiIcon("history",14)}<select id="reportPeriodSelect">${periods.map(period=>`<option value="${period.start_date}" ${period.start_date===state.adminWeek?"selected":""}>${esc(period.name||periodRangeLabel(period))}${period.is_active?" · ACTIVO":""}</option>`).join("")}</select></label><button id="exportReportsBtnV300" class="excel-export-button-v300" type="button" title="Exportar reporte a Excel">${uiIcon("excel",17)}<span>Excel</span></button></div>
+      </section>
       ${adminPlatformOverviewV280(data.videos)}
       ${adminLeaderVideosV300(data.videos,accountMap)}
-      <section class="card report-list-card-v224 executive-report-list admin-evaluation-v300"><div class="report-list-head-v224"><div><span class="section-eyebrow">OPERACIÓN</span><h2>Evaluación de cliperos</h2></div><span class="report-live-note"><i></i> En vivo</span></div>${adminReportsTable(reports)}</section>`;
+      <section class="card report-list-card-v224 executive-report-list admin-evaluation-v300"><div class="report-list-head-v224"><div><span class="section-eyebrow">OPERACIÓN</span><h2>Evaluación de cliperos</h2><p>Rendimiento, avance y pago del período en una sola vista.</p></div><span class="report-live-note"><i></i> Actualización en vivo</span></div>${adminReportsTable(reports)}</section>`;
     $("#reportPeriodSelect")?.addEventListener("change",event=>{state.adminWeek=event.target.value;state.adminVideoData=null;renderAdminReportsV300();});
     $("#exportReportsBtnV300")?.addEventListener("click",()=>exportWeeklyExcel(reports));
     bindAdminReportButtons();
@@ -5931,7 +5953,7 @@
     window.clipcontrolDebugFacebook = (url) => invokeProcessor({ action:"facebook_probe", url });
     window.clipcontrolDebugFrontend = () => ({
       version: CLIPCONTROL_FRONTEND_VERSION,
-      source: "app-v3.2.0-access-gate.js",
+      source: "app-v3.2.1-visual-home.js",
       scripts: [...document.scripts].map((script) => script.src).filter(Boolean),
       samples: {
         facebook_reel: videoUrlValidation("https://www.facebook.com/reel/1579243183893033"),
@@ -5946,13 +5968,6 @@
   window.addEventListener("DOMContentLoaded", init);
 
 })();
-
-
-
-
-
-
-
 
 
 
