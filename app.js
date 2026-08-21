@@ -1,7 +1,7 @@
 (() => {
-  const CLIPCONTROL_FRONTEND_VERSION = "3.3.0-threshold-no-date";
+  const CLIPCONTROL_FRONTEND_VERSION = "3.4.0-proportional-cap-photo";
   window.CLIPCONTROL_FRONTEND_VERSION = CLIPCONTROL_FRONTEND_VERSION;
-  document.documentElement.dataset.clipcontrolUi = "3.3.0-threshold-no-date";
+  document.documentElement.dataset.clipcontrolUi = "3.4.0-proportional-cap-photo";
   "use strict";
 
   const PLATFORMS = {
@@ -253,7 +253,7 @@
         return `facebook:${id}`;
       }
       if (platform === "tiktok") {
-        const match = path.match(/\/video\/(\d+)/i);
+        const match = path.match(/\/(?:video|photo)\/(\d+)/i);
         return `tiktok:${match?.[1] || path.toLowerCase()}`;
       }
       url.hash = "";
@@ -4789,7 +4789,7 @@
       const canReturn = !["draft","paid","closed","expired"].includes(r.status);
       return `<div class="report-actions-v234">${canReturn?`<button class="btn btn-elaboration btn-sm" data-return-draft="${r.report_id}" title="Seguir en elaboración">↩ <span>Elaborar</span></button>`:""}<button class="btn btn-sm report-evaluate-btn-v224" data-admin-report="${r.report_id}">${uiIcon("arrow",14)}<span>Evaluar</span></button></div>`;
     };
-    const rows = reports.map(r => `<tr class="report-row-v224 row-${statusClass(r.status)}"><td><div class="report-person report-person-v224"><strong>${esc(r.names||r.username)} ${esc(r.surnames||"")}</strong><small>@${esc(r.username)}</small></div></td><td><div class="report-number-v224"><b>${r.video_count}</b><small>${r.account_count} cuenta${Number(r.account_count)===1?"":"s"}</small></div></td><td><div class="report-metric-main metric-main-v224">${uiIcon("eye",14)}<b>${num(r.total_views)}</b></div><div class="report-like-line metric-like-v224">${uiIcon("heart",12)} ${num(r.total_likes||0)}</div></td><td>${reportPlatformProgressMarkup(r.report_id,r.user_id)}</td><td><b class="report-pay-v224">${money(reportDisplayTotal(r))}</b><small class="pay-sum-note">metas por cuenta + bono</small></td><td>${statusBadge(r.status)}</td><td>${actionMarkup(r)}</td></tr>`).join("");
+    const rows = reports.map(r => `<tr class="report-row-v224 row-${statusClass(r.status)}"><td><div class="report-person report-person-v224"><strong>${esc(r.names||r.username)} ${esc(r.surnames||"")}</strong><small>@${esc(r.username)}</small></div></td><td><div class="report-number-v224"><b>${r.video_count}</b><small>${r.account_count} cuenta${Number(r.account_count)===1?"":"s"}</small></div></td><td><div class="report-metric-main metric-main-v224">${uiIcon("eye",14)}<b>${num(r.total_views)}</b></div><div class="report-like-line metric-like-v224">${uiIcon("heart",12)} ${num(r.total_likes||0)}</div></td><td>${reportPlatformProgressMarkup(r.report_id,r.user_id)}</td><td><b class="report-pay-v224">${money(reportDisplayTotal(r))}</b><small class="pay-sum-note">proporcional por cuenta + bono</small></td><td>${statusBadge(r.status)}</td><td>${actionMarkup(r)}</td></tr>`).join("");
     const cards = reports.map(r => `<article class="mobile-report-card-v224 row-${statusClass(r.status)}"><div class="mobile-report-head-v224"><div class="report-person-v224"><strong>${esc(r.names||r.username)} ${esc(r.surnames||"")}</strong><small>@${esc(r.username)}</small></div>${statusBadge(r.status)}</div><div class="mobile-report-stats-v224"><div><span>Videos</span><b>${r.video_count}</b></div><div><span>Vistas</span><b>${num(r.total_views)}</b></div><div><span>Likes</span><b>${num(r.total_likes||0)}</b></div><div><span>Pago</span><b>${money(reportDisplayTotal(r))}</b></div></div><div class="mobile-network-breakdown"><span>Avance por redes</span>${reportPlatformProgressMarkup(r.report_id,r.user_id)}</div>${actionMarkup(r)}</article>`).join("");
     return `<div class="desktop-report-table desktop-report-table-v224"><table><thead><tr><th>Clipero</th><th>Videos</th><th>Métricas</th><th>Avance por redes</th><th>Pago total</th><th>Estado</th><th></th></tr></thead><tbody>${rows}</tbody></table></div><div class="mobile-report-cards mobile-report-cards-v224">${cards}</div>`;
   }
@@ -4810,7 +4810,7 @@
       const accountPayRowsV280=await fetchAccountPaymentsV280(reportId);
       const basePay=Math.round(accountPayRowsV280.reduce((sum,row)=>sum+Number(row.final_pay||0),0)*100)/100;
       const metricsStrip=adminPlatformOverviewV280(videos);
-      openModal(`<div class="modal-head sticky-modal-head"><div><h2>${esc(summary.names||summary.username)} ${esc(summary.surnames||"")}</h2><p>${periodRangeLabel(summary)} · @${esc(summary.username)}</p></div><div class="actions">${statusBadge(summary.status)}<button id="adminReportX" class="modal-close">×</button></div></div><div class="admin-action-bar"><div class="action-summary"><span><small>Videos</small><b>${summary.video_count}</b></span><span><small>Pago por metas</small><b>${money(basePay)}</b></span><span><small>Ajuste manual</small><b>${money(summary.bonus_pay||0)}</b></span></div><div class="actions"><button data-review-action="draft" class="btn btn-elaboration btn-sm" ${summary.status==="draft"||["paid","closed","expired"].includes(summary.status)?"disabled":""}>↩ Seguir en elaboración</button><button data-review-action="review" class="btn btn-secondary btn-sm">Revisión</button><button data-review-action="observe" class="btn btn-warning btn-sm">Observar</button><button data-review-action="approve" class="btn btn-success btn-sm">Aprobar</button><button data-review-action="paid" class="btn btn-dark btn-sm">Pagado</button></div></div><div class="modal-body compact-modal-body">${metricsStrip}<details class="payment-details-v321"><summary>${uiIcon("wallet",14)}<span><b>Datos y cálculo de pago</b><small>${summary.payment_account?`${paymentMethodLabel(summary.payment_method)} · ${esc(summary.payment_account)}`:"Datos pendientes"}</small></span>${uiIcon("arrow",14)}</summary><div class="payment-details-body-v321">${adminAccountPaymentBreakdownV280(accountPayRowsV280)}${paymentFormulaNoteV280(accountPayRowsV280)}<div class="payment-request-box"><h3>Datos de pago</h3><p>${summary.payment_account?`${paymentMethodLabel(summary.payment_method)} · ${esc(summary.payment_holder||summary.names||"")} · ${esc(summary.payment_account)}`:"Aún no registrados."}</p></div><div class="review-options" style="margin-top:12px"><label>Ajuste / bono manual<input id="bonusPayInput" type="number" min="0" step="0.01" value="${summary.bonus_pay??0}"><small class="muted">Opcional. El bono por 700k se calcula automáticamente según SQL 32.</small></label><label>Número de operación<input id="transactionInput" value="${esc(summary.transaction_number||"")}" placeholder="Opcional"></label><label class="full">Nota / observación<textarea id="reviewNote" rows="2">${esc(summary.admin_note||"")}</textarea></label></div></div></details><div class="card-head evaluation-videos-head-v330"><div><h3>Videos</h3><p>Más vistos primero · enlaces y métricas.</p></div><button id="syncReportNow" class="btn btn-secondary btn-sm">↻ Actualizar métricas</button></div>${videosTable(videos,accounts,true)}${observations.length?`<div class="divider"></div><h3>Observaciones</h3>${observations.map(o=>`<div class="alert ${o.resolved?"alert-info":"alert-danger"} compact-alert"><div>📝</div><div><strong>${o.resolved?"Resuelta":"Pendiente"}</strong><p>${esc(o.message)} · ${dateTimeLabel(o.created_at)}</p></div></div>`).join("")}`:""}</div><div class="modal-foot"><span class="small muted">Última métrica: ${dateTimeLabel(summary.metrics_last_checked_at)}</span><button id="adminReportClose" class="btn btn-ghost">Cerrar</button></div>`,"",layer=>{
+      openModal(`<div class="modal-head sticky-modal-head"><div><h2>${esc(summary.names||summary.username)} ${esc(summary.surnames||"")}</h2><p>${periodRangeLabel(summary)} · @${esc(summary.username)}</p></div><div class="actions">${statusBadge(summary.status)}<button id="adminReportX" class="modal-close">×</button></div></div><div class="admin-action-bar"><div class="action-summary"><span><small>Videos</small><b>${summary.video_count}</b></span><span><small>Pago calculado</small><b>${money(basePay)}</b></span><span><small>Ajuste manual</small><b>${money(summary.bonus_pay||0)}</b></span></div><div class="actions"><button data-review-action="draft" class="btn btn-elaboration btn-sm" ${summary.status==="draft"||["paid","closed","expired"].includes(summary.status)?"disabled":""}>↩ Seguir en elaboración</button><button data-review-action="review" class="btn btn-secondary btn-sm">Revisión</button><button data-review-action="observe" class="btn btn-warning btn-sm">Observar</button><button data-review-action="approve" class="btn btn-success btn-sm">Aprobar</button><button data-review-action="paid" class="btn btn-dark btn-sm">Pagado</button></div></div><div class="modal-body compact-modal-body">${metricsStrip}<details class="payment-details-v321"><summary>${uiIcon("wallet",14)}<span><b>Datos y cálculo de pago</b><small>${summary.payment_account?`${paymentMethodLabel(summary.payment_method)} · ${esc(summary.payment_account)}`:"Datos pendientes"}</small></span>${uiIcon("arrow",14)}</summary><div class="payment-details-body-v321">${adminAccountPaymentBreakdownV280(accountPayRowsV280)}${paymentFormulaNoteV280(accountPayRowsV280)}<div class="payment-request-box"><h3>Datos de pago</h3><p>${summary.payment_account?`${paymentMethodLabel(summary.payment_method)} · ${esc(summary.payment_holder||summary.names||"")} · ${esc(summary.payment_account)}`:"Aún no registrados."}</p></div><div class="review-options" style="margin-top:12px"><label>Ajuste / bono manual<input id="bonusPayInput" type="number" min="0" step="0.01" value="${summary.bonus_pay??0}"><small class="muted">Opcional. El bono por 700k se calcula automáticamente según SQL 32.</small></label><label>Número de operación<input id="transactionInput" value="${esc(summary.transaction_number||"")}" placeholder="Opcional"></label><label class="full">Nota / observación<textarea id="reviewNote" rows="2">${esc(summary.admin_note||"")}</textarea></label></div></div></details><div class="card-head evaluation-videos-head-v330"><div><h3>Videos</h3><p>Más vistos primero · enlaces y métricas.</p></div><button id="syncReportNow" class="btn btn-secondary btn-sm">↻ Actualizar métricas</button></div>${videosTable(videos,accounts,true)}${observations.length?`<div class="divider"></div><h3>Observaciones</h3>${observations.map(o=>`<div class="alert ${o.resolved?"alert-info":"alert-danger"} compact-alert"><div>📝</div><div><strong>${o.resolved?"Resuelta":"Pendiente"}</strong><p>${esc(o.message)} · ${dateTimeLabel(o.created_at)}</p></div></div>`).join("")}`:""}</div><div class="modal-foot"><span class="small muted">Última métrica: ${dateTimeLabel(summary.metrics_last_checked_at)}</span><button id="adminReportClose" class="btn btn-ghost">Cerrar</button></div>`,"",layer=>{
         $("#adminReportX",layer).addEventListener("click",closeModal); $("#adminReportClose",layer).addEventListener("click",closeModal);
         $("#syncReportNow",layer).addEventListener("click",async()=>{$("#syncReportNow",layer).disabled=true;await syncReportMetrics(reportId);closeModal();await openAdminReportDetail(reportId);});
         $$('[data-edit-video]',layer).forEach(b=>b.addEventListener("click",()=>openEditVideoModal(b.dataset.editVideo,true)));
@@ -4974,12 +4974,12 @@
       const qualificationViews = Number(sampleRule.qualification_views || 250000);
       const qualifiedPay = Number(sampleRule.qualified_account_pay || 300);
       const bonusViews = Number(sampleRule.bonus_views || 700000);
-      const bonusAmount = Number(sampleRule.bonus_amount || 0);
+      const bonusAmount = Number(sampleRule.bonus_amount ?? 200);
       const reportTotal = (report) => Math.round(Number(paymentTotalMap[report?.report_id]?.total_pay || 0) * 100) / 100;
       const reportAccountRows = (reportId) => (accountPaymentsByReport[reportId] || []);
       const reportsWithPay = (reports || []).filter((report) => reportTotal(report) > 0).length;
       const reportsWithoutPay = Math.max((reports || []).length - reportsWithPay, 0);
-      const qualifiedAccounts = (accountPaymentRows || []).filter((row) => row.base_qualified).length;
+      const paidAccountCount = (accountPaymentRows || []).filter((row) => Number(row.final_pay || 0) > 0).length;
       const bonusAccounts = (accountPaymentRows || []).filter((row) => row.bonus_qualified).length;
       const totals = {
         clippers: Number((reports || []).length),
@@ -4998,7 +4998,7 @@
         { height: 34, cells: [{ value: "PAGOS ACTUALIZADOS · TODOS LOS CLIPEROS", style: "sTitle", mergeAcross: 9 }] },
         { height: 22, cells: [{ value: `Pago total por persona = suma de todas sus cuentas sociales · ${periodText}`, style: "sSubtitle", mergeAcross: 9 }] },
         [{ value: "", mergeAcross: 9 }],
-        { cells: [{ value: `CRITERIO: cada cuenta que alcance ${num(qualificationViews)} vistas recibe ${money(qualifiedPay)}. Desde ${num(bonusViews)} vistas suma bono ${bonusAmount > 0 ? money(bonusAmount) : "por definir"}. Cuentas menores a la meta = S/0.`, style: "sCap", mergeAcross: 9 }] },
+        { cells: [{ value: `CRITERIO: cada cuenta se calcula por regla de tres hasta ${num(qualificationViews)} vistas, con tope base de ${money(qualifiedPay)}. Entre ${num(qualificationViews)} y ${num(bonusViews - 1)} vistas conserva ese tope. Desde ${num(bonusViews)} vistas suma bono fijo de ${money(bonusAmount)}. Multicuentas: cada cuenta se evalúa por separado.`, style: "sCap", mergeAcross: 9 }] },
         [{ value: "", mergeAcross: 9 }],
         [
           { value: "PERSONAS", style: "sKpiLabel", mergeAcross: 1 },
@@ -5030,7 +5030,7 @@
             { value: paymentMethodLabel(report.payment_method), style: "sText" },
             { value: report.payment_account || "Pendiente", style: report.payment_account ? "sText" : "sWarnText" },
             { value: report.payment_holder || `${report.names || ""} ${report.surnames || ""}`.trim() || firstName(report), style: "sText" },
-            { value: payRows.filter((row)=>row.base_qualified).length, type: "Number", style: "sNumber" },
+            { value: payRows.filter((row)=>Number(row.final_pay||0)>0).length, type: "Number", style: "sNumber" },
             { value: payRows.filter((row)=>row.bonus_qualified).length, type: "Number", style: "sNumber" },
             { value: Number(report.total_views || 0), type: "Number", style: "sNumber" },
             { value: reportTotal(report), type: "Number", style: "sMoneyStrong" },
@@ -5039,7 +5039,7 @@
         }),
         [
           { value: "TOTAL", style: "sTotal", mergeAcross: 4 },
-          { value: qualifiedAccounts, type: "Number", style: "sTotalNumber" },
+          { value: paidAccountCount, type: "Number", style: "sTotalNumber" },
           { value: bonusAccounts, type: "Number", style: "sTotalNumber" },
           { value: totals.views, type: "Number", style: "sTotalNumber" },
           { value: totals.total, type: "Number", style: "sTotalMoney" },
@@ -5059,14 +5059,14 @@
           return [
             { value: platformLabel(platform), style: platformColors[platform].soft },
             { value: paymentRows.length, type: "Number", style: "sNumber" },
-            { value: paymentRows.filter((row)=>row.base_qualified).length, type: "Number", style: "sNumber" },
+            { value: paymentRows.filter((row)=>Number(row.final_pay||0)>0).length, type: "Number", style: "sNumber" },
             { value: paymentRows.filter((row)=>row.bonus_qualified).length, type: "Number", style: "sNumber" },
             { value: Number(aggregate.video_count || 0), type: "Number", style: "sNumber" },
             { value: Number(aggregate.views || 0), type: "Number", style: "sNumber" },
             { value: Math.round(paymentRows.reduce((sum,row)=>sum+Number(row.final_pay||0),0)*100)/100, type: "Number", style: "sMoney" },
             { value: qualificationViews, type: "Number", style: "sNumber" },
             { value: bonusViews, type: "Number", style: "sNumber" },
-            { value: `${money(qualifiedPay)} por cuenta`, style: "sText" },
+            { value: `Proporcional hasta ${money(qualifiedPay)} · +${money(bonusAmount)} desde ${num(bonusViews)}`, style: "sText" },
           ];
         }),
       ];
@@ -5125,7 +5125,7 @@
           ],
           [
             { value: "Regla de pago", style: "sLabel" },
-            { value: reportAccountRows(report.report_id).length ? `${money(qualifiedPay)} por cuenta desde ${num(qualificationViews)} · bono desde ${num(bonusViews)}${bonusAmount>0?` (${money(bonusAmount)})`:""}` : "Sin cuentas para calcular", style: reportAccountRows(report.report_id).length ? "sCap" : "sText", mergeAcross: 8 },
+            { value: reportAccountRows(report.report_id).length ? `Regla de tres hasta ${num(qualificationViews)} vistas · tope ${money(qualifiedPay)} · desde ${num(bonusViews)} suma ${money(bonusAmount)} por cuenta` : "Sin cuentas para calcular", style: reportAccountRows(report.report_id).length ? "sCap" : "sText", mergeAcross: 8 },
           ],
           [{ value: "", mergeAcross: 9 }],
           { cells: [{ value: "RESUMEN POR RED", style: "sSection", mergeAcross: 9 }] },
@@ -5303,7 +5303,7 @@
   function errorMessage(error) {
     const msg=error?.message||String(error||"Error inesperado");
     if(/ACCESS_PAYMENT_REQUIRED|clipper_access_fees|clipper_access_payment_settings|clipcontrol-payment-qr|clipcontrol-payment-proofs|access_fee|access_payment|v320/i.test(msg))return "El acceso para subir clips está bloqueado por el control de pago o falta ejecutar SQL 31 de ClipControl 3.2.";
-    if(/v330|clipcontrol_payment_rule_v330|clipcontrol_account_payments_v330|admin_period_payment_totals_v330|admin_period_account_payments_v330|admin_sync_report_payment_v330/i.test(msg))return "Falta ejecutar SQL 32 de ClipControl 3.3 para activar la regla 250k / S/300 por cuenta.";
+    if(/v330|clipcontrol_payment_rule_v330|clipcontrol_account_payments_v330|admin_period_payment_totals_v330|admin_period_account_payments_v330|admin_sync_report_payment_v330/i.test(msg))return "Falta ejecutar SQL 32 y la actualización SQL 33 para activar la regla proporcional con tope S/300 y bono S/200.";
     if(/v280|payment_cap_settings_v280|clipper_payment_cap_overrides_v280|clipcontrol_account_payments_v280|clipcontrol_motivation_v280/i.test(msg))return "Falta ejecutar el SQL 28 de ClipControl 2.8.0 en Supabase.";
     if(/admin_quick_review_report_v234|clipcontrol_auto_submit_due_reports_v234|clipcontrol_uncapped_platform_pay/i.test(msg))return "Falta ejecutar 24_clipcontrol_pago_sin_techo_autoenvio.sql en Supabase.";
     if(/profile-avatars|avatar_url|update_my_avatar_url|admin_return_report_to_draft/i.test(msg))return "Falta ejecutar 23_clipcontrol_ui_profile_draft.sql en Supabase.";
@@ -5454,14 +5454,14 @@
 
   function adminAccountPaymentBreakdownV280(rows = []) {
     if (!rows.length) return state.paymentRuleV330Missing ? `<div class="alert alert-warning compact-alert"><div>⚙</div><div><strong>Falta SQL 32</strong><p>Instala la regla 250k / S/300 antes de calcular pagos.</p></div></div>` : "";
-    return `<section class="account-pay-breakdown-v280"><div class="account-pay-head-v280"><div><span class="section-eyebrow">PAGO POR CUENTA</span><h3>Meta individual por cuenta social</h3></div><span class="pill pill-green">250K → S/300</span></div><div class="account-pay-grid-v280">${rows.map(row => `<div class="account-pay-row-v280">${platformLogo(row.platform)}<div><strong>${esc(row.account_name || platformLabel(row.platform))}</strong><small>${num(row.views)} vistas · meta ${num(row.qualification_views || 250000)}</small></div><b>${money(row.final_pay)}</b>${row.base_qualified ? '<span class="cap-hit-v280">META</span>' : '<span class="chip">SIN PAGO</span>'}${row.bonus_qualified ? '<span class="pill pill-green">BONO 700K</span>' : ""}</div>`).join("")}</div></section>`;
+    return `<section class="account-pay-breakdown-v280"><div class="account-pay-head-v280"><div><span class="section-eyebrow">PAGO POR CUENTA</span><h3>Regla de tres por cuenta social</h3></div><span class="pill pill-green">Hasta 250K → máx. S/300</span></div><div class="account-pay-grid-v280">${rows.map(row => `<div class="account-pay-row-v280">${platformLogo(row.platform)}<div><strong>${esc(row.account_name || platformLabel(row.platform))}</strong><small>${num(row.views)} vistas · tope ${num(row.qualification_views || 250000)}</small></div><b>${money(row.final_pay)}</b>${row.base_qualified ? '<span class="cap-hit-v280">META</span>' : '<span class="chip">PROPORCIONAL</span>'}${row.bonus_qualified ? '<span class="pill pill-green">BONO 700K</span>' : ""}</div>`).join("")}</div></section>`;
   }
 
   function paymentFormulaNoteV280(rows = []) {
     const sample = rows[0];
-    if (!sample) return state.paymentRuleV330Missing ? `<div class="formula-box formula-box-v234"><b>Regla de pago no instalada</b><span>Ejecuta SQL 32. No se usa el cálculo proporcional anterior.</span></div>` : "";
+    if (!sample) return state.paymentRuleV330Missing ? `<div class="formula-box formula-box-v234"><b>Regla de pago no instalada</b><span>Ejecuta SQL 32. Instala la regla actual de pago proporcional con tope por cuenta.</span></div>` : "";
     const bonusText = Number(sample.bonus_amount || 0) > 0 ? `${num(sample.bonus_views || 700000)} vistas → bono ${money(sample.bonus_amount)}` : `${num(sample.bonus_views || 700000)} vistas → bono configurable`;
-    return `<div class="formula-box formula-box-v234"><b>Pago por cumplimiento de meta</b><span>${num(sample.qualification_views || 250000)} vistas → ${money(sample.qualified_account_pay || 300)} por cuenta · ${bonusText}. Menos de la meta = S/0.</span></div>`;
+    return `<div class="formula-box formula-box-v234"><b>Regla de tres por cada cuenta</b><span>Menos de ${num(sample.qualification_views || 250000)} vistas = pago proporcional · desde ${num(sample.qualification_views || 250000)} el base queda en ${money(sample.qualified_account_pay || 300)} · desde ${num(sample.bonus_views || 700000)} suma bono ${money(Number(sample.bonus_amount ?? 200))}.</span></div>`;
   }
 
   function adminPlatformOverviewV280(videos = []) {
@@ -5526,7 +5526,7 @@
     return `<div class="clipper-account-grid-v280">${rows.map(row => {
       const target = Math.max(Number(row.qualification_views || 250000),1);
       const progress = clamp((Number(row.views||0)/target)*100,0,100);
-      const stateText = row.base_qualified ? `Meta alcanzada · ${money(row.qualified_account_pay || 300)}` : `Faltan ${num(Math.max(target-Number(row.views||0),0))} vistas`;
+      const stateText = row.bonus_qualified ? `Bono alcanzado · ${money(row.final_pay)}` : row.base_qualified ? `Tope base alcanzado · ${money(row.qualified_account_pay || 300)}` : `Pago proporcional · faltan ${num(Math.max(target-Number(row.views||0),0))} vistas para el tope`;
       return `<article class="clipper-account-card-v280 account-${row.platform}"><div class="clipper-account-head-v280">${platformBadge(row.platform,true)}<span>${row.video_count} videos</span></div><strong>${esc(row.account_name || platformLabel(row.platform))}</strong><div class="clipper-account-numbers-v280"><span><b>${num(row.views)}</b><small>vistas</small></span><span><b>${money(row.final_pay)}</b><small>pago</small></span></div><div class="network-target-progress"><span style="width:${progress}%"></span></div><small class="clipper-cap-note-v280">${stateText}${row.bonus_qualified ? ` · BONO ${num(row.bonus_views || 700000)}+` : ""}</small></article>`;
     }).join("")}</div>`;
   }
@@ -5541,7 +5541,7 @@
     const basePay = accountPayments.length ? accountPayments.reduce((sum,row)=>sum+Number(row.final_pay||0),0) : clipperRegisteredPlatforms().reduce((sum,platform)=>sum+uncappedPlatformPay(normalizedPlatformRow(platform,Object.fromEntries((state.platformSummary||[]).map(row=>[row.platform,row]))[platform])),0);
     const capActive = accountPayments.some(row=>row.cap_enabled);
     setHeader("Mi período", `${periodRangeLabel(s)} · ${s?.video_count||0} videos`);
-    $("#content").innerHTML = `<section class="creator-overview-v234 creator-overview-v280"><div class="creator-overview-user"><button id="quickProfilePhoto" class="creator-photo-button" type="button" title="Cambiar foto de perfil">${profileAvatarMarkup(state.profile,"medium")}<i>+</i></button><div><span><i></i> ${deadlinePassed?"CERRADO":"EN VIVO"}</span><strong>${esc(accountName)}</strong><small>${dateOnlyLabel(s?.week_end)} · ${activeAccounts().length} cuenta${activeAccounts().length===1?"":"s"}</small></div></div><div class="creator-overview-pay"><small>PAGO ESTIMADO</small><strong>${money(basePay)}</strong><span>${capActive?"Techo por cuenta activo":"Pago proporcional"}</span></div></section>
+    $("#content").innerHTML = `<section class="creator-overview-v234 creator-overview-v280"><div class="creator-overview-user"><button id="quickProfilePhoto" class="creator-photo-button" type="button" title="Cambiar foto de perfil">${profileAvatarMarkup(state.profile,"medium")}<i>+</i></button><div><span><i></i> ${deadlinePassed?"CERRADO":"EN VIVO"}</span><strong>${esc(accountName)}</strong><small>${dateOnlyLabel(s?.week_end)} · ${activeAccounts().length} cuenta${activeAccounts().length===1?"":"s"}</small></div></div><div class="creator-overview-pay"><small>PAGO ESTIMADO</small><strong>${money(basePay)}</strong><span>${capActive?"Regla de tres · tope S/300":"Pago proporcional"}</span></div></section>
       ${clipperMotivationMarkupV280(motivation)}
       <section class="network-progress-section network-progress-section-v234"><div class="section-title-row"><div><span class="section-eyebrow">MIS CUENTAS</span><h3>Rendimiento</h3></div><button id="goNetworksBtn" class="btn btn-ghost btn-sm">${uiIcon("network",14)} Redes</button></div>${clipperAccountCardsV280(accountPayments)}</section>
       <div class="clipper-action-strip clipper-action-strip-v234 clipper-action-strip-v280"><div class="clipper-action-primary"><div><span>VIDEOS</span><h3>${editable?"Agregar contenido":"Período cerrado"}</h3></div><button id="quickAddBtn" class="btn btn-primary" ${!editable?"disabled":""}>${uiIcon("plus")} Agregar</button></div><div class="auto-submit-card-v234">${uiIcon("check",16)}<div><strong>Entrega automática</strong><small>${deadlinePassed?"Enviado":dateTimeLabel(s?.submission_deadline)}</small></div></div></div>
@@ -5584,8 +5584,8 @@
     const qualificationViews = Number(cfg?.qualification_views || 250000);
     const qualifiedPay = Number(cfg?.qualified_account_pay || 300);
     const bonusViews = Number(cfg?.bonus_views || 700000);
-    const bonusAmount = Number(cfg?.bonus_amount || 0);
-    pane.insertAdjacentHTML("afterbegin",`<div class="settings-group-card payment-cap-card-v280"><div class="settings-group-title"><div><h3>Pago por cuenta que alcanza meta</h3><p>Cada cuenta social se evalúa por separado. No existe pago proporcional debajo de la meta.</p></div><span class="pill pill-green">POR CUENTA</span></div><form id="paymentThresholdFormV330" class="payment-cap-form-v280"><label>Meta para cobrar<input name="qualification_views" type="number" min="1" value="${qualificationViews}"></label><label>Pago por cuenta S/<input name="qualified_account_pay" type="number" min="0" step="0.01" value="${qualifiedPay}"></label><label>Meta para bono<input name="bonus_views" type="number" min="1" value="${bonusViews}"></label><label>Bono adicional S/<input name="bonus_amount" type="number" min="0" step="0.01" value="${bonusAmount}"></label><div class="cap-example-v280"><b>${num(qualificationViews)} vistas = ${money(qualifiedPay)} por cuenta</b><span>Menos de ${num(qualificationViews)} = S/0. Desde ${num(bonusViews)} se suma el bono configurado.</span></div><button class="btn btn-primary">Guardar regla</button></form>${cfg?"":'<div class="alert alert-warning compact-alert" style="margin-top:10px"><div>⚙</div><div><strong>Falta instalar SQL 32</strong><p>Ejecuta la nueva migración antes de usar pagos.</p></div></div>'}</div>`);
+    const bonusAmount = Number(cfg?.bonus_amount ?? 200);
+    pane.insertAdjacentHTML("afterbegin",`<div class="settings-group-card payment-cap-card-v280"><div class="settings-group-title"><div><h3>Pago proporcional por cuenta con tope</h3><p>Cada cuenta social se evalúa por separado. Debajo de 250K se calcula proporcionalmente; al llegar a la meta se congela el base en S/300.</p></div><span class="pill pill-green">POR CUENTA</span></div><form id="paymentThresholdFormV330" class="payment-cap-form-v280"><label>Vistas para llegar al tope<input name="qualification_views" type="number" min="1" value="${qualificationViews}"></label><label>Tope base por cuenta S/<input name="qualified_account_pay" type="number" min="0" step="0.01" value="${qualifiedPay}"></label><label>Vistas para bono<input name="bonus_views" type="number" min="1" value="${bonusViews}"></label><label>Bono adicional S/<input name="bonus_amount" type="number" min="0" step="0.01" value="${bonusAmount}"></label><div class="cap-example-v280"><b>${num(qualificationViews)} vistas = ${money(qualifiedPay)} por cuenta</b><span>Debajo de ${num(qualificationViews)} se aplica regla de tres. Desde la meta, el pago base queda topado en ${money(qualifiedPay)}. Al llegar a ${num(bonusViews)} se suma ${money(bonusAmount)}.</span></div><button class="btn btn-primary">Guardar regla</button></form>${cfg?"":'<div class="alert alert-warning compact-alert" style="margin-top:10px"><div>⚙</div><div><strong>Falta actualizar pagos</strong><p>Ejecuta SQL 32 y SQL 33 antes de usar esta regla.</p></div></div>'}</div>`);
     $("#paymentThresholdFormV330")?.addEventListener("submit",async event=>{event.preventDefault();const f=Object.fromEntries(new FormData(event.target));const q=Number(f.qualification_views),pay=Number(f.qualified_account_pay),bv=Number(f.bonus_views),ba=Number(f.bonus_amount);if(!q||q<1)return toast("La meta debe ser mayor a cero.","error");if(bv<q)return toast("La meta del bono no puede ser menor que la meta de pago.","error");try{await query(state.supabase.rpc("admin_set_payment_rule_v330",{p_qualification_views:q,p_qualified_account_pay:pay,p_bonus_views:bv,p_bonus_amount:ba}));toast("Regla de pago actualizada","success");await renderAdminSettings();}catch(error){toast(errorMessage(error),"error");}});
   }
 
@@ -5595,8 +5595,8 @@
 
 
   // ========================================================================
-  // ClipControl 3.3.0 · ADMIN + CLIPERO UNIFICADOS · PAGO POR META
-  // Fuente activa: diseño horizontal, cobro ocasional y pago por cuenta calificada.
+  // ClipControl 3.4.0 · ADMIN + CLIPERO UNIFICADOS · PAGO PROPORCIONAL CON TOPE
+  // Fuente activa: diseño horizontal, cobro ocasional y pago por cuenta con regla de tres, tope y bono.
   // ========================================================================
 
   function principalAccountLabelV300(account) {
@@ -5743,7 +5743,7 @@
     $("#content").innerHTML=`${clipperAccessPaymentMarkupV320()}<section class="admin-command-hero admin-command-hero-v300 clipper-command-hero-v330"><div><span class="reports-kicker">RESUMEN DEL PERÍODO</span><h2>${esc(`${state.profile.names||""} ${state.profile.surnames||""}`.trim() || state.profile.username)}</h2><div class="admin-hero-stats-v300"><span><b>${state.videos.length}</b> videos</span><span><b>${activeAccounts().length}</b> cuentas</span><span><b>${num(totalViews)}</b> vistas</span><span><b>${money(basePay)}</b> pago por metas</span></div></div><div class="clipper-home-tools-v330"><button id="quickAddBtn" class="btn btn-primary" ${!editable?"disabled":""}>${uiIcon("plus",14)} ${clipperUploadEnabledV320()?"Agregar videos":"Pago pendiente"}</button><button id="viewVideosBtn" class="btn btn-secondary">Mis videos</button><button id="refreshMyMetricsBtn" class="icon-action" title="Actualizar métricas">${uiIcon("sync",15)}</button></div></section>
       ${adminPlatformOverviewV280(state.videos)}
       <section class="card admin-leaders-v300 clipper-best-v330"><div class="admin-section-head-v300"><div><span class="section-eyebrow">TU RENDIMIENTO</span><h2>Mejores videos</h2></div><small>Más vistos del período</small></div>${videosTable(topVideos,state.accounts,false,false)}</section>
-      <section class="network-progress-section network-progress-section-v234 clipper-accounts-v330"><div class="section-title-row"><div><span class="section-eyebrow">MIS CUENTAS</span><h3>Pago por metas</h3></div><button id="goNetworksBtn" class="btn btn-ghost btn-sm">${uiIcon("network",14)} Redes</button></div>${clipperAccountCardsV280(accountPayments)}</section>`;
+      <section class="network-progress-section network-progress-section-v234 clipper-accounts-v330"><div class="section-title-row"><div><span class="section-eyebrow">MIS CUENTAS</span><h3>Pago por cuenta</h3></div><button id="goNetworksBtn" class="btn btn-ghost btn-sm">${uiIcon("network",14)} Redes</button></div>${clipperAccountCardsV280(accountPayments)}</section>`;
     $("#quickAddBtn")?.addEventListener("click",handleQuickRegisterAction);
     bindClipperAccessPaymentActionsV320($("#content"));
     $("#viewVideosBtn")?.addEventListener("click",()=>navigate("videos"));
@@ -5755,7 +5755,7 @@
   async function renderAdminPaymentsV300() {
     const start=state.activePeriod?.start_date||currentWeekStartISO();
     const [rule,reportsRaw]=await Promise.all([fetchPaymentRuleV330(),query(state.supabase.from("weekly_report_summary").select("*").eq("week_start",start).order("names"))]);
-    const q=Number(rule?.qualification_views||250000), qp=Number(rule?.qualified_account_pay||300), bv=Number(rule?.bonus_views||700000), ba=Number(rule?.bonus_amount||0);
+    const q=Number(rule?.qualification_views||250000), qp=Number(rule?.qualified_account_pay||300), bv=Number(rule?.bonus_views||700000), ba=Number(rule?.bonus_amount??200);
     setHeader("Pagos",`${num(q)} vistas → ${money(qp)} por cuenta · bono desde ${num(bv)}`);
     const reports=[...(reportsRaw||[])].sort((a,b)=>`${a.names||""} ${a.surnames||""}`.trim().localeCompare(`${b.names||""} ${b.surnames||""}`.trim(),"es",{sensitivity:"base"}));
     const ids=reports.map(r=>r.report_id);
@@ -5763,22 +5763,22 @@
     state.adminPlatformRows=platformRows||[];
     state.paymentTotalsV280=Object.fromEntries((totalRows||[]).map(row=>[row.report_id,row]));
     const total=reports.reduce((sum,r)=>sum+reportDisplayTotal(r),0), missing=reports.filter(r=>!r.payment_account).length;
-    const qualified=(accountRows||[]).filter(r=>r.base_qualified).length, bonuses=(accountRows||[]).filter(r=>r.bonus_qualified).length;
-    $("#content").innerHTML=`<section class="payment-summary-v300"><span><small>PROYECTADO</small><b>${money(total)}</b></span><span><small>CUENTAS CON PAGO</small><b>${qualified}</b></span><span><small>CUENTAS CON BONO</small><b>${bonuses}</b></span><span><small>SIN DATOS DE PAGO</small><b>${missing}</b></span></section><div class="payment-rule-strip-v330"><b>Regla:</b> ${num(q)} vistas = ${money(qp)} por cuenta · ${num(bv)} vistas = bono ${ba>0?money(ba):"por definir"} · menos de ${num(q)} = S/0.</div><section class="payment-list-v300">${reports.map(r=>{const detail=(accountRows||[]).filter(row=>row.report_id===r.report_id).sort((a,b)=>Number(b.views||0)-Number(a.views||0)||String(a.account_name||"").localeCompare(String(b.account_name||""),"es"));const mapped=state.paymentTotalsV280?.[r.report_id]||{};const base=Number(mapped.base_pay||0);const accounts=detail.map(row=>`<span>${platformLogo(row.platform)} ${esc(row.account_name||platformLabel(row.platform))}: <b>${num(row.views)} vistas · ${money(row.final_pay)}</b>${row.base_qualified?' <i>META</i>':' <i class="no-pay-v330">S/0</i>'}${row.bonus_qualified?' <i class="bonus-hit-v330">BONO</i>':""}</span>`).join("");return `<article class="payment-row-v300"><div class="payment-person-v300"><strong>${esc(`${r.names||r.username||""} ${r.surnames||""}`.trim())}</strong><small>@${esc(r.username||"")} · ${paymentMethodLabel(r.payment_method)} ${r.payment_account?`· ${esc(r.payment_account)}`:"· Sin datos"}</small></div><div class="payment-accounts-v300">${accounts||'<span class="muted">Sin cuentas registradas</span>'}</div><div class="payment-money-v300"><span><small>Metas + bono auto</small><b>${money(base)}</b></span><span><small>Ajuste manual</small><b>${money(mapped.manual_bonus_pay??r.bonus_pay??0)}</b></span><span><small>Total</small><strong>${money(reportDisplayTotal(r))}</strong></span></div><div class="payment-actions-v300">${statusBadge(r.status)}<button class="btn btn-secondary btn-sm" data-admin-report="${r.report_id}">Evaluar</button></div></article>`;}).join("")||'<div class="empty">Sin reportes.</div>'}</section>`;
+    const paidAccounts=(accountRows||[]).filter(r=>Number(r.final_pay||0)>0).length, qualified=(accountRows||[]).filter(r=>r.base_qualified).length, bonuses=(accountRows||[]).filter(r=>r.bonus_qualified).length;
+    $("#content").innerHTML=`<section class="payment-summary-v300"><span><small>PROYECTADO</small><b>${money(total)}</b></span><span><small>CUENTAS CON PAGO</small><b>${paidAccounts}</b></span><span><small>CUENTAS CON BONO</small><b>${bonuses}</b></span><span><small>SIN DATOS DE PAGO</small><b>${missing}</b></span></section><div class="payment-rule-strip-v330"><b>Regla:</b> regla de tres hasta ${num(q)} vistas · tope base ${money(qp)} · desde ${num(bv)} vistas + ${money(ba)} de bono por cuenta.</div><section class="payment-list-v300">${reports.map(r=>{const detail=(accountRows||[]).filter(row=>row.report_id===r.report_id).sort((a,b)=>Number(b.views||0)-Number(a.views||0)||String(a.account_name||"").localeCompare(String(b.account_name||""),"es"));const mapped=state.paymentTotalsV280?.[r.report_id]||{};const base=Number(mapped.base_pay||0);const accounts=detail.map(row=>`<span>${platformLogo(row.platform)} ${esc(row.account_name||platformLabel(row.platform))}: <b>${num(row.views)} vistas · ${money(row.final_pay)}</b>${row.bonus_qualified?' <i class="bonus-hit-v330">BONO +S/200</i>':row.base_qualified?' <i>TOPE S/300</i>':Number(row.views||0)>0?' <i class="no-pay-v330">PROPORCIONAL</i>':' <i class="no-pay-v330">S/0</i>'}</span>`).join("");return `<article class="payment-row-v300"><div class="payment-person-v300"><strong>${esc(`${r.names||r.username||""} ${r.surnames||""}`.trim())}</strong><small>@${esc(r.username||"")} · ${paymentMethodLabel(r.payment_method)} ${r.payment_account?`· ${esc(r.payment_account)}`:"· Sin datos"}</small></div><div class="payment-accounts-v300">${accounts||'<span class="muted">Sin cuentas registradas</span>'}</div><div class="payment-money-v300"><span><small>Base proporcional + bono</small><b>${money(base)}</b></span><span><small>Ajuste manual</small><b>${money(mapped.manual_bonus_pay??r.bonus_pay??0)}</b></span><span><small>Total</small><strong>${money(reportDisplayTotal(r))}</strong></span></div><div class="payment-actions-v300">${statusBadge(r.status)}<button class="btn btn-secondary btn-sm" data-admin-report="${r.report_id}">Evaluar</button></div></article>`;}).join("")||'<div class="empty">Sin reportes.</div>'}</section>`;
     bindAdminReportButtons();
   }
 
   // Reduce texto del modal administrativo sin quitar funciones.
   function paymentFormulaNoteV280(rows = []) {
     const sample=rows[0];
-    if(!sample) return state.paymentRuleV330Missing?`<div class="formula-box formula-box-v300"><b>Falta SQL 32</b><span>No se usa el cálculo proporcional anterior.</span></div>`:"";
-    const bonus=Number(sample.bonus_amount||0);
-    return `<div class="formula-box formula-box-v300"><b>${num(sample.qualification_views||250000)} vistas = ${money(sample.qualified_account_pay||300)} por cuenta</b><span>Menos de la meta = S/0 · ${num(sample.bonus_views||700000)} vistas = bono ${bonus>0?money(bonus):"configurable"}.</span></div>`;
+    if(!sample) return state.paymentRuleV330Missing?`<div class="formula-box formula-box-v300"><b>Falta SQL 32</b><span>Instala la regla actual de pago proporcional con tope por cuenta.</span></div>`:"";
+    const bonus=Number(sample.bonus_amount??200);
+    return `<div class="formula-box formula-box-v300"><b>Regla de tres hasta ${num(sample.qualification_views||250000)} vistas</b><span>Debajo del tope se paga proporcionalmente · desde ${num(sample.qualification_views||250000)} el base queda en ${money(sample.qualified_account_pay||300)} · desde ${num(sample.bonus_views||700000)} suma ${money(bonus)} de bono por cuenta.</span></div>`;
   }
 
   function adminAccountPaymentBreakdownV280(rows = []) {
-    if(!rows.length) return state.paymentRuleV330Missing?`<div class="alert alert-warning compact-alert"><div>⚙</div><div><strong>Falta SQL 32</strong><p>Instala la regla de pago por cuenta.</p></div></div>`:"";
-    return `<section class="account-pay-breakdown-v300"><div class="account-pay-grid-v300">${rows.map(row=>`<div>${platformLogo(row.platform)}<span><b>${esc(row.account_name||platformLabel(row.platform))}</b><small>${num(row.views)} vistas · meta ${num(row.qualification_views||250000)}</small></span><strong>${money(row.final_pay)}</strong>${row.base_qualified?'<i>META</i>':'<i class="no-pay-v330">S/0</i>'}${row.bonus_qualified?'<i class="bonus-hit-v330">BONO</i>':""}</div>`).join("")}</div></section>`;
+    if(!rows.length) return state.paymentRuleV330Missing?`<div class="alert alert-warning compact-alert"><div>⚙</div><div><strong>Falta SQL 32/33</strong><p>Instala la regla proporcional por cuenta.</p></div></div>`:"";
+    return `<section class="account-pay-breakdown-v300"><div class="account-pay-grid-v300">${rows.map(row=>`<div>${platformLogo(row.platform)}<span><b>${esc(row.account_name||platformLabel(row.platform))}</b><small>${num(row.views)} vistas · tope ${num(row.qualification_views||250000)}</small></span><strong>${money(row.final_pay)}</strong>${row.bonus_qualified?'<i class="bonus-hit-v330">BONO +S/200</i>':row.base_qualified?'<i>TOPE</i>':Number(row.views||0)>0?'<i class="no-pay-v330">PROP.</i>':'<i class="no-pay-v330">S/0</i>'}</div>`).join("")}</div></section>`;
   }
 
   // La ultima capa gana sobre las versiones historicas conservadas en el archivo.
@@ -5815,12 +5815,13 @@
     window.clipcontrolDebugFacebook = (url) => invokeProcessor({ action:"facebook_probe", url });
     window.clipcontrolDebugFrontend = () => ({
       version: CLIPCONTROL_FRONTEND_VERSION,
-      source: "app-v3.3.0-threshold-no-date.js",
+      source: "app-v3.4.0-proportional-cap-photo.js",
       scripts: [...document.scripts].map((script) => script.src).filter(Boolean),
       samples: {
         facebook_reel: videoUrlValidation("https://www.facebook.com/reel/1579243183893033"),
         facebook_share: videoUrlValidation("https://www.facebook.com/share/p/1Gt2mqMZu9/"),
         tiktok_short: videoUrlValidation("https://vt.tiktok.com/ZSVNuNh39/"),
+        tiktok_photo: videoUrlValidation("https://www.tiktok.com/@porky.vuelve/photo/7675700974551371029"),
         youtube_short: videoUrlValidation("https://youtube.com/shorts/wSrn2PM4o6o?si=JRei8DWRyfFQpCSo"),
         instagram_reel: videoUrlValidation("https://www.instagram.com/reel/ABC123/")
       }
