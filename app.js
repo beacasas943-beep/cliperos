@@ -1,7 +1,7 @@
 (() => {
-  const CLIPCONTROL_FRONTEND_VERSION = "3.6.0-payment-distribution";
+  const CLIPCONTROL_FRONTEND_VERSION = "4.0.0-responsive-payments";
   window.CLIPCONTROL_FRONTEND_VERSION = CLIPCONTROL_FRONTEND_VERSION;
-  document.documentElement.dataset.clipcontrolUi = "3.6.0-payment-distribution";
+  document.documentElement.dataset.clipcontrolUi = "4.0.0-responsive-payments";
   "use strict";
 
   const PLATFORMS = {
@@ -1066,7 +1066,7 @@
     if(state.page==="videos")return renderAdminVideoCenter();
     if(state.page==="metrics")return renderMetricInbox();
     if(state.page==="channel")return renderPublicYoutube();
-    if(state.page==="clippers")return state.selectedClipperId?renderClipperAdminDetail():renderAdminClippers();
+    if(state.page==="clippers")return state.selectedClipperId?renderClipperAdminDetail():renderAdminClippersV400();
     if(state.page==="payments")return renderAdminPayments();
     if(state.page==="announcements")return renderAdminAnnouncements();
     if(state.page==="settings")return renderAdminSettings();
@@ -1077,7 +1077,7 @@
   async function renderClipperPageV240() {
     if(["dashboard","videos","networks","channel"].includes(state.page))await loadClipperCurrentData();
     if(state.page==="dashboard")return renderClipperDashboard();
-    if(state.page==="videos")return renderClipperVideosV240();
+    if(state.page==="videos")return renderClipperVideosV400();
     if(state.page==="channel")return renderPublicYoutube();
     if(state.page==="networks")return renderNetworks();
     if(state.page==="history")return renderClipperHistory();
@@ -1836,8 +1836,8 @@
     setHeader("Historial semanal", "Consulta nuevamente los enlaces y resultados de semanas anteriores.");
     const reports = await query(state.supabase.from("weekly_report_summary").select("*").eq("user_id", state.profile.id).order("week_start", { ascending: false }));
     $("#content").innerHTML = `<div class="card"><div class="card-head"><div><h2>Mis reportes</h2><p>${reports.length} semanas registradas</p></div></div>
-      <div class="table-wrap"><table><thead><tr><th>Semana</th><th>Videos</th><th>Vistas</th><th>Pago calculado</th><th>Estado</th><th></th></tr></thead><tbody>
-      ${reports.map((r) => `<tr><td>${dateOnlyLabel(r.week_start)} – ${dateOnlyLabel(r.week_end)}</td><td>${r.video_count}</td><td>${num(r.total_views)}</td><td>${money(r.total_pay ?? r.approved_base_pay ?? r.calculated_base_pay)}</td><td><span class="status ${statusClass(r.status)}">${STATUS_LABELS[r.status]}</span></td><td><button class="btn btn-secondary btn-sm" data-history-report="${r.report_id}">Ver detalle</button></td></tr>`).join("") || `<tr><td colspan="6" class="empty">No existen reportes.</td></tr>`}
+      <div class="table-wrap"><table><thead><tr><th>Semana</th><th>Videos</th><th>Vistas</th><th>Pago final</th><th>Estado</th><th></th></tr></thead><tbody>
+      ${reports.map((r) => `<tr><td>${dateOnlyLabel(r.week_start)} – ${dateOnlyLabel(r.week_end)}</td><td>${r.video_count}</td><td>${num(r.total_views)}</td><td>${money(reportFinalTotalV360(r))}</td><td><span class="status ${statusClass(r.status)}">${STATUS_LABELS[r.status]}</span></td><td><button class="btn btn-secondary btn-sm" data-history-report="${r.report_id}">Ver detalle</button></td></tr>`).join("") || `<tr><td colspan="6" class="empty">No existen reportes.</td></tr>`}
       </tbody></table></div></div>`;
     $$('[data-history-report]').forEach((b) => b.addEventListener("click", () => openReportDetail(b.dataset.historyReport, false)));
   }
@@ -1913,6 +1913,107 @@
   }
 
   /* ================= ADMINISTRACIÓN ================= */
+
+
+  async function requestAvatarAnnouncementV400(userIds) {
+    const ids=[...new Set((userIds||[]).filter(Boolean))];
+    if(!ids.length)return toast("No hay cliperos sin foto en este filtro.","success");
+    const payload={
+      title:"Completa tu perfil de ClipControl",
+      message:"Completa tu perfil de ClipControl subiendo la misma foto o logo de tu cuenta principal de TikTok.",
+      kind:"important",
+      audience:"clippers",
+      target_user_ids:ids,
+      require_ack:true,
+      show_on_login:true,
+      starts_at:new Date().toISOString(),
+      ends_at:null,
+      created_by:state.profile.id,
+      active:true,
+    };
+    await query(state.supabase.from("announcements").insert(payload));
+    toast(`Solicitud enviada a ${ids.length} clipero${ids.length===1?"":"s"}.`,"success");
+  }
+
+  async function renderAdminClippersV400() {
+    await renderAdminClippers();
+    const users=(state.adminAccessUsersV320||[]).filter(u=>u.role==="clipper");
+    if(!users.length)return;
+    const ids=users.map(u=>u.user_id).filter(Boolean);
+    const [accounts,reports]=await Promise.all([
+      ids.length?query(state.supabase.from("social_accounts").select("user_id,account_name,social_alias,platform").in("user_id",ids)).catch(()=>[]):Promise.resolve([]),
+      query(state.supabase.from("weekly_report_summary").select("user_id,status").eq("week_start",state.activePeriod?.start_date||currentWeekStartISO())).catch(()=>[]),
+    ]);
+    const reportMap=new Map((reports||[]).map(r=>[String(r.user_id),r]));
+    const accountsByUser={};for(const a of accounts||[])(accountsByUser[String(a.user_id)]||=[]).push(a);
+    const toolbar=$(".access-toolbar");
+    if(toolbar&&!$("#clipperProfileFilterV400")){
+      const extra=document.createElement("div");extra.className="clipper-extra-tools-v400";
+      const missingPhoto=users.filter(u=>!u.avatar_url);
+      extra.innerHTML=`<label><span>Perfil</span><select id="clipperProfileFilterV400"><option value="all">Todos</option><option value="active">Activos</option><option value="suspended">Suspendidos</option><option value="photo_missing">Sin foto</option><option value="pay_missing">Sin datos de pago</option><option value="reported">Con reporte</option><option value="report_missing">Sin reporte</option></select></label><button id="requestPhotosV400" class="btn btn-secondary" type="button" ${missingPhoto.length?"":"disabled"}>📷 Solicitar fotos (${missingPhoto.length})</button>`;
+      toolbar.appendChild(extra);
+      const apply=()=>{
+        const term=String($("#accessSearch")?.value||"").trim().toLowerCase();
+        const mode=$("#clipperProfileFilterV400")?.value||"all";
+        $$("[data-open-user]").forEach(open=>{
+          const card=open.closest("[data-search-user]");if(!card)return;
+          const uid=String(open.dataset.openUser||"");const u=users.find(x=>String(x.user_id)===uid);if(!u)return;
+          const r=reportMap.get(uid);const hay=`${u.username||""} ${u.names||""} ${u.surnames||""} ${u.phone||""} ${u.payment_account||""} ${u.payment_holder||""} ${(accountsByUser[uid]||[]).map(a=>`${a.account_name||""} ${a.social_alias||""}`).join(" ")}`.toLowerCase();
+          const matchTerm=!term||hay.includes(term);
+          const sent=Boolean(r&&r.status&&r.status!=="draft");
+          const matchMode=mode==="all"||(mode==="active"&&u.active!==false)||(mode==="suspended"&&u.active===false)||(mode==="photo_missing"&&!u.avatar_url)||(mode==="pay_missing"&&!String(u.payment_account||"").trim())||(mode==="reported"&&sent)||(mode==="report_missing"&&!sent);
+          card.classList.toggle("hidden",!(matchTerm&&matchMode));
+        });
+      };
+      $("#clipperProfileFilterV400")?.addEventListener("change",apply);
+      $("#accessSearch")?.addEventListener("input",debounce(apply,220));
+      $("#requestPhotosV400")?.addEventListener("click",async()=>{if(!confirm(`¿Solicitar foto a ${missingPhoto.length} clipero(s) que aún no tienen avatar?`))return;try{await requestAvatarAnnouncementV400(missingPhoto.map(u=>u.user_id));}catch(error){toast(errorMessage(error),"error");}});
+    }
+    $$("[data-open-user]").forEach(open=>{
+      const card=open.closest("[data-search-user]");const uid=String(open.dataset.openUser||"");const u=users.find(x=>String(x.user_id)===uid);
+      if(!card||!u||u.avatar_url||card.querySelector("[data-request-photo-v400]"))return;
+      const actions=card.querySelector(".access-user-actions-v320")||card;
+      const btn=document.createElement("button");btn.className="btn btn-ghost btn-sm";btn.type="button";btn.dataset.requestPhotoV400=uid;btn.textContent="Solicitar foto";actions.appendChild(btn);
+      btn.addEventListener("click",async()=>{try{await requestAvatarAnnouncementV400([uid]);}catch(error){toast(errorMessage(error),"error");}});
+    });
+  }
+
+  function clipperVideoDateMatchV400(video,mode){
+    if(!mode||mode==="all")return true;
+    const when=new Date(video.created_at||video.updated_at||0).getTime();if(!Number.isFinite(when))return false;
+    const age=Date.now()-when;
+    if(mode==="today")return age<=86400000;
+    if(mode==="48h")return age<=172800000;
+    return true;
+  }
+
+  function openClipperVideoFiltersV400(onApply){
+    const f=state.clipperVideoFiltersV400;
+    openModal(`<div class="modal-head"><div><span class="section-eyebrow">FILTROS</span><h2>Filtrar videos</h2></div><button class="modal-close" data-video-filter-close-v400 aria-label="Cerrar">×</button></div><div class="modal-body"><div class="form-grid compact-form"><label>Plataforma<select id="clipVideoPlatformSheetV400"><option value="all">Todas</option>${Object.keys(PLATFORMS).map(p=>`<option value="${p}" ${f.platform===p?"selected":""}>${platformLabel(p)}</option>`).join("")}</select></label><label>Cuenta<select id="clipVideoAccountSheetV400"><option value="all">Todas</option>${activeAccounts().map(a=>`<option value="${a.id}" ${f.account===a.id?"selected":""}>${esc(a.account_name)}</option>`).join("")}</select></label><label>Estado<select id="clipVideoStatusSheetV400"><option value="all">Todos</option>${["ok","partial","error","syncing","pending"].map(x=>`<option value="${x}" ${f.status===x?"selected":""}>${metricBucketLabel(x)}</option>`).join("")}</select></label><label>Fecha<select id="clipVideoDateSheetV400"><option value="all" ${f.date==="all"?"selected":""}>Todo el período</option><option value="today" ${f.date==="today"?"selected":""}>Últimas 24 h</option><option value="48h" ${f.date==="48h"?"selected":""}>Últimas 48 h</option></select></label></div></div><div class="modal-foot"><button class="btn btn-ghost" data-video-filter-reset-v400>Limpiar</button><button class="btn btn-primary" data-video-filter-apply-v400>Aplicar filtros</button></div>`,"small",layer=>{
+      $("[data-video-filter-close-v400]",layer)?.addEventListener("click",closeModal);
+      $("[data-video-filter-reset-v400]",layer)?.addEventListener("click",()=>{f.platform="all";f.account="all";f.status="all";f.date="all";setLocalV400("clipper_video_filters",f);closeModal();onApply();});
+      $("[data-video-filter-apply-v400]",layer)?.addEventListener("click",()=>{f.platform=$("#clipVideoPlatformSheetV400",layer).value;f.account=$("#clipVideoAccountSheetV400",layer).value;f.status=$("#clipVideoStatusSheetV400",layer).value;f.date=$("#clipVideoDateSheetV400",layer).value;setLocalV400("clipper_video_filters",f);closeModal();onApply();});
+    });
+  }
+
+  function renderClipperVideosV400() {
+    setHeader("Videos",periodRangeLabel(state.currentSummary));
+    const editable=reportEditable(state.currentSummary)&&clipperUploadEnabledV320();
+    const saved=getLocalV400("clipper_video_filters",{})||{};
+    state.clipperVideoFiltersV400=state.clipperVideoFiltersV400||{search:saved.search||"",platform:saved.platform||"all",status:saved.status||"all",account:saved.account||"all",date:saved.date||"all"};
+    const f=state.clipperVideoFiltersV400,accountMap=Object.fromEntries(state.accounts.map(a=>[a.id,a]));
+    const visible=state.videos.filter(video=>{
+      const hay=`${video.external_title||""} ${video.video_url||""} ${accountMap[video.account_id]?.account_name||""}`.toLowerCase();
+      return (!f.search||hay.includes(f.search.toLowerCase()))&&(f.platform==="all"||video.platform===f.platform)&&(f.account==="all"||video.account_id===f.account)&&(f.status==="all"||metricBucket(video)===f.status)&&clipperVideoDateMatchV400(video,f.date);
+    }).sort((a,b)=>Number(b.views||0)-Number(a.views||0)||new Date(b.created_at||0)-new Date(a.created_at||0));
+    const totalViews=state.videos.reduce((sum,v)=>sum+Number(v.views||0),0);
+    $("#content").innerHTML=`${clipperAccessPaymentMarkupV320()}<section class="video-page-head-v400"><div><span class="section-eyebrow">MIS VIDEOS</span><h2>${state.videos.length} videos</h2><p>${num(totalViews)} vistas en el período</p></div><button id="quickAddBtn" class="btn btn-primary" ${!editable?"disabled":""}>${uiIcon("plus",16)} Agregar video</button></section><section class="video-toolbar-v400 card"><label class="video-search-v400">${uiIcon("search",17)}<input id="clipperVideoSearchV400" value="${esc(f.search)}" placeholder="Buscar video…"></label><div class="video-desktop-filters-v400"><select id="clipperPlatformV400"><option value="all">Plataforma</option>${Object.keys(PLATFORMS).map(p=>`<option value="${p}" ${f.platform===p?"selected":""}>${platformLabel(p)}</option>`).join("")}</select><select id="clipperAccountV400"><option value="all">Cuenta</option>${activeAccounts().map(a=>`<option value="${a.id}" ${f.account===a.id?"selected":""}>${esc(a.account_name)}</option>`).join("")}</select><select id="clipperStatusV400"><option value="all">Estado</option>${["ok","partial","error","syncing","pending"].map(x=>`<option value="${x}" ${f.status===x?"selected":""}>${metricBucketLabel(x)}</option>`).join("")}</select><select id="clipperDateV400"><option value="all">Fecha</option><option value="today" ${f.date==="today"?"selected":""}>24 h</option><option value="48h" ${f.date==="48h"?"selected":""}>48 h</option></select></div><button id="clipperFiltersBtnV400" class="btn btn-secondary video-mobile-filter-v400" type="button">Filtros</button></section><div class="filter-result-line"><span><b>${visible.length}</b> resultados</span><span>Más vistos primero</span></div><section class="global-video-grid global-video-list video-list-v400">${visible.map(v=>clipperVideoCenterCard(v,accountMap,editable)).join("")||'<div class="empty card">No tienes videos con estos filtros.</div>'}</section>`;
+    $("#quickAddBtn")?.addEventListener("click",handleQuickRegisterAction);bindClipperAccessPaymentActionsV320($("#content"));
+    $("#clipperVideoSearchV400")?.addEventListener("input",debounce(e=>{f.search=e.target.value;setLocalV400("clipper_video_filters",f);renderClipperVideosV400();},240));
+    [["clipperPlatformV400","platform"],["clipperAccountV400","account"],["clipperStatusV400","status"],["clipperDateV400","date"]].forEach(([id,key])=>$("#"+id)?.addEventListener("change",e=>{f[key]=e.target.value;setLocalV400("clipper_video_filters",f);renderClipperVideosV400();}));
+    $("#clipperFiltersBtnV400")?.addEventListener("click",()=>openClipperVideoFiltersV400(renderClipperVideosV400));
+    $$('[data-edit-video]').forEach(b=>b.addEventListener("click",()=>openEditVideoModal(b.dataset.editVideo)));$$('[data-delete-video]').forEach(b=>b.addEventListener("click",()=>deleteClipperVideo(b.dataset.deleteVideo)));$$('[data-clipper-sync]').forEach(b=>b.addEventListener("click",async()=>{b.disabled=true;await syncVideoMetrics(b.dataset.clipperSync);await loadClipperCurrentData();renderClipperVideosV400();}));
+  }
 
   async function renderAdminPage() {
     if (state.page === "dashboard") return renderAdminDashboard();
@@ -3292,7 +3393,7 @@
 
   async function renderAdminPage() {
     if(state.page==="dashboard")return renderAdminDashboard();
-    if(state.page==="clippers")return state.selectedClipperId?renderClipperAdminDetail():renderAdminClippers();
+    if(state.page==="clippers")return state.selectedClipperId?renderClipperAdminDetail():renderAdminClippersV400();
     if(state.page==="reports")return renderAdminReports();
     if(state.page==="payments")return renderAdminPayments();
     if(state.page==="announcements")return renderAdminAnnouncements();
@@ -3583,7 +3684,10 @@
       shield: '<path d="M12 3 4.5 6v5.4c0 4.5 3 7.6 7.5 9.6 4.5-2 7.5-5.1 7.5-9.6V6L12 3Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>',
       sync: '<path d="M20 7v5h-5M4 17v-5h5M6.1 8.2A7 7 0 0 1 18 7l2 5M18 15.8A7 7 0 0 1 6 17l-2-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
       upload: '<path d="M12 16V4m0 0-4 4m4-4 4 4M5 14v5h14v-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
-      logout: '<path d="M10 17l5-5-5-5M15 12H3M14 4h5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>'
+      logout: '<path d="M10 17l5-5-5-5M15 12H3M14 4h5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+      search: '<circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m20 20-4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
+      copy: '<rect x="8" y="8" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" fill="none" stroke="currentColor" stroke-width="1.7"/>',
+      menu: '<path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>'
     };
     return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true">${paths[name] || paths.activity}</svg>`;
   }
@@ -4334,7 +4438,12 @@
         }
       }
       showApp();
-      state.page = "dashboard";
+      const rememberedPage = getLocalV400("last_page", "dashboard");
+      const allowedPages = state.profile.role === "clipper"
+        ? ["dashboard","videos","networks","history","profile","channel"]
+        : ["dashboard","reports","videos","metrics","clippers","payments","announcements","settings","channel"];
+      state.page = allowedPages.includes(rememberedPage) ? rememberedPage : "dashboard";
+      buildNav();
       await renderPage(true);
       startPresenceHeartbeat();
       startLiveRealtime();
@@ -5313,6 +5422,158 @@
     }
   }
 
+  // ===================== V370 — Exportar Imagen / PDF =====================
+  function loadScriptOnceV370(src) {
+    return new Promise((resolve, reject) => {
+      if ([...document.scripts].some(s => s.src === src)) return resolve();
+      const tag = document.createElement("script");
+      tag.src = src; tag.onload = () => resolve(); tag.onerror = () => reject(new Error("No se pudo cargar " + src));
+      document.head.appendChild(tag);
+    });
+  }
+
+  async function ensureExportLibsV370() {
+    await Promise.all([
+      loadScriptOnceV370("https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"),
+      loadScriptOnceV370("https://unpkg.com/jspdf@2.5.2/dist/jspdf.umd.min.js"),
+    ]);
+  }
+
+  function firstNameV370(report) {
+    return String(report.names || report.username || "Clipero").trim().split(/\s+/)[0] || "Clipero";
+  }
+
+  function aliasV370(report) {
+    const raw = String(report.social_alias || report.username || "").trim();
+    return raw && !raw.startsWith("@") ? `@${raw}` : raw || "—";
+  }
+
+  function avatarCircleV370(url, label) {
+    const initials = esc(String(label || "?").trim().slice(0, 1).toUpperCase() || "?");
+    if (url) {
+      return `<img src="${esc(url)}" crossorigin="anonymous" referrerpolicy="no-referrer" style="width:40px;height:40px;border-radius:50%;object-fit:cover;border:2px solid #e2e8f0;background:#eef2ff" />`;
+    }
+    return `<span style="width:40px;height:40px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#eef2ff;color:#4338ca;font-weight:800;font-size:15px;border:2px solid #e2e8f0">${initials}</span>`;
+  }
+
+  async function buildVisualReportDataV370(reports) {
+    const settings = await fetchPaymentDistributionSettingsV360();
+    const distribution = buildPaymentDistributionV360(reports || [], settings);
+    const userIds = [...new Set((reports || []).map(r => r.user_id).filter(Boolean))];
+    const profileRows = userIds.length
+      ? await query(state.supabase.from("profiles").select("id,avatar_url").in("id", userIds)).catch(() => [])
+      : [];
+    const avatarByUser = Object.fromEntries((profileRows || []).map(p => [p.id, p.avatar_url]));
+
+    const allRows = (reports || []).map(report => ({
+      report,
+      name: firstNameV370(report),
+      alias: aliasV370(report),
+      method: paymentMethodLabel(report.payment_method),
+      account: report.payment_account ? String(report.payment_account) : "Pendiente",
+      holder: report.payment_holder || `${report.names || ""} ${report.surnames || ""}`.trim() || report.username || "—",
+      final: roundMoneyV360(reportFinalTotalV360(report)),
+      avatarUrl: avatarByUser[report.user_id] || null,
+    }));
+
+    // Solo se listan los cliperos que sí clipearon (pago final > S/0).
+    const rows = allRows.filter(r => r.final > 0).sort((a, b) => a.final - b.final);
+
+    const withPay = rows.length;
+    const withoutPay = allRows.length - withPay;
+    const total = roundMoneyV360(rows.reduce((sum, r) => sum + r.final, 0));
+    return { rows, totals: { people: allRows.length, withPay, withoutPay, total }, distribution };
+  }
+
+  function visualReportMarkupV370(data, periodText) {
+    const { rows, totals } = data;
+    const rowsHtml = rows.map(r => `
+      <tr>
+        <td style="padding:12px 14px;white-space:nowrap"><div style="display:flex;align-items:center;gap:10px">${avatarCircleV370(r.avatarUrl, r.name)}<b style="font-size:13px;color:#0f172a">${esc(r.name)}</b></div></td>
+        <td style="padding:12px 14px;color:#334155;font-size:12.5px">${esc(r.alias)}</td>
+        <td style="padding:12px 14px"><span style="display:inline-block;padding:5px 12px;border-radius:20px;background:#f1eaff;color:#5b21b6;font-weight:800;font-size:11.5px">${esc(r.method)}</span></td>
+        <td style="padding:12px 14px;color:#334155;font-size:12.5px">${esc(r.account)}</td>
+        <td style="padding:12px 14px;color:#334155;font-size:12.5px">${esc(r.holder)}</td>
+        <td style="padding:12px 14px;text-align:right"><span style="display:inline-block;padding:6px 14px;border-radius:10px;background:#e9fbf1;color:#0f7a3c;font-weight:900;font-size:13.5px">${esc(money(r.final))}</span></td>
+      </tr>`).join("");
+
+    return `<div id="exportVisualCaptureV370" style="position:fixed;left:-99999px;top:0;width:1180px;background:#f4f6fb;font-family:'Plus Jakarta Sans',Inter,Arial,sans-serif;padding:0">
+      <div style="background:linear-gradient(135deg,#101a33,#17233c);padding:26px 30px;color:#fff">
+        <h1 style="margin:0;font-size:26px;letter-spacing:-.02em">PAGOS ACTUALIZADOS · TODOS LOS CLIPEROS</h1>
+        <p style="margin:8px 0 0;font-size:13px;color:#c9d3ea">Pago final por persona · ${esc(periodText || "")}</p>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;padding:22px 30px 6px">
+        ${[["PERSONAS", totals.people], ["CON PAGO", totals.withPay], ["CON S/0", totals.withoutPay], ["TOTAL GENERAL", money(totals.total)]].map(([label, value]) => `
+          <div style="background:#fff;border-radius:14px;padding:16px;box-shadow:0 2px 10px rgba(15,23,42,.05)">
+            <div style="font-size:26px;font-weight:900;color:#0f172a">${esc(String(value))}</div>
+            <div style="font-size:10.5px;font-weight:800;letter-spacing:.06em;color:#94a3b8;margin-top:4px">${label}</div>
+          </div>`).join("")}
+      </div>
+      <div style="margin:16px 30px 28px;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 2px 10px rgba(15,23,42,.05)">
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr style="background:#17233c">
+            ${["PRIMER NOMBRE","SEUDÓNIMO PRINCIPAL","MÉTODO","CUENTA DE PAGO","TITULAR DE PAGO","PAGO FINAL"].map((h,i)=>`<th style="padding:12px 14px;text-align:${i===5?"right":"left"};color:#fff;font-size:10.5px;letter-spacing:.05em;font-weight:800">${h}</th>`).join("")}
+          </tr></thead>
+          <tbody>${rowsHtml || `<tr><td colspan="6" style="padding:20px;text-align:center;color:#94a3b8">Sin cliperos con pago en este período.</td></tr>`}</tbody>
+        </table>
+      </div>
+      <div style="padding:0 30px 20px;font-size:10px;color:#94a3b8">Generado por ClipControl · ${esc(dateTimeLabel(new Date().toISOString()))}</div>
+    </div>`;
+  }
+
+  async function withVisualCaptureV370(reports, callback) {
+    showLoading(true);
+    let host = null;
+    try {
+      const periodText = periodRangeLabel({ week_start: state.adminWeek || state.activePeriod?.start_date });
+      const data = await buildVisualReportDataV370(reports);
+      host = document.createElement("div");
+      host.innerHTML = visualReportMarkupV370(data, periodText);
+      document.body.appendChild(host);
+      const target = host.querySelector("#exportVisualCaptureV370");
+      const images = [...target.querySelectorAll("img")];
+      await Promise.all(images.map(img => img.complete ? Promise.resolve() : new Promise(resolve => { img.onload = resolve; img.onerror = () => { img.removeAttribute("src"); resolve(); }; })));
+      await ensureExportLibsV370();
+      const canvas = await window.html2canvas(target, { scale: 2, backgroundColor: "#f4f6fb", useCORS: true });
+      await callback(canvas);
+    } catch (error) {
+      console.error("Error generando el reporte visual:", error);
+      toast(`No se pudo generar el reporte: ${errorMessage(error)}`, "error");
+    } finally {
+      if (host) host.remove();
+      showLoading(false);
+    }
+  }
+
+  async function exportReportImageV370(reports) {
+    await withVisualCaptureV370(reports, async (canvas) => {
+      const dateTag = String(state.adminWeek || currentWeekStartISO()).replace(/[^\d-]/g, "");
+      canvas.toBlob(blob => {
+        if (!blob) return toast("No se pudo generar la imagen.", "error");
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = url; anchor.download = `ClipControl_${dateTag}_pagos.png`; anchor.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        toast("Imagen exportada", "success");
+      }, "image/png");
+    });
+  }
+
+  async function exportReportPdfV370(reports) {
+    await withVisualCaptureV370(reports, async (canvas) => {
+      const { jsPDF } = window.jspdf;
+      const pxToMm = 0.264583 / 2; // canvas fue capturado a escala 2x
+      const widthMm = canvas.width * pxToMm;
+      const heightMm = canvas.height * pxToMm;
+      const doc = new jsPDF({ orientation: widthMm > heightMm ? "l" : "p", unit: "mm", format: [widthMm, heightMm] });
+      doc.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, widthMm, heightMm);
+      const dateTag = String(state.adminWeek || currentWeekStartISO()).replace(/[^\d-]/g, "");
+      doc.save(`ClipControl_${dateTag}_pagos.pdf`);
+      toast("PDF exportado", "success");
+    });
+  }
+  // =================== fin V370 — Exportar Imagen / PDF ===================
+
   async function loadClipperCurrentData() {
     // Fallback único por sesión por compatibilidad. El cierre periódico real se
     // intenta ejecutar en Supabase con pg_cron (SQL 31), no cada minuto por navegador.
@@ -5677,50 +5938,51 @@
   }
 
   function buildPaymentDistributionV360(reports = [], settings = null) {
+    // V370: regla fija acordada — por cada clipero válido (reporte enviado, no en
+    // borrador, con pago calculado > 0) se descuenta un monto fijo de su pago y el
+    // administrador recibe ese descuento MÁS un bono adicional del mismo monto que
+    // no sale del bolsillo de ningún clipero (aumenta el total pagado del período).
     const source = Array.isArray(reports) ? reports : [];
     const config = settings || state.paymentDistributionSettingsV360 || {};
     const recipientId = String(config.recipient_user_id || "");
     const recipientExists = Boolean(recipientId && source.some(report => String(report.user_id || "") === recipientId));
     const enabled = config.enabled !== false && recipientExists;
-    const percent = Math.max(0, Number(config.contribution_percent ?? 5));
-    const minimum = Math.max(0, roundMoneyV360(config.minimum_contribution ?? 30));
+    const discount = Math.max(0, roundMoneyV360(config.minimum_contribution ?? 30));
+    const adminExtra = discount;
 
     const rows = source.map(report => {
       const original = roundMoneyV360(reportDisplayTotal(report));
-      let contribution = 0;
-      if (enabled && String(report.user_id || "") !== recipientId && original > 0) {
-        const proportional = roundMoneyV360(original * percent / 100);
-        // Protección para que un pago futuro menor de S/30 nunca quede negativo.
-        contribution = Math.min(original, roundMoneyV360(Math.max(proportional, minimum)));
-      }
+      const isRecipient = String(report.user_id || "") === recipientId;
+      const reportSent = report.status && report.status !== "draft";
+      const valid = enabled && !isRecipient && original > 0 && reportSent;
+      const contribution = valid ? roundMoneyV360(Math.min(original, discount)) : 0;
       return {
         report_id: report.report_id,
         user_id: report.user_id,
         original,
-        contribution: roundMoneyV360(contribution),
+        contribution,
+        admin_extra: valid ? adminExtra : 0,
         final: roundMoneyV360(original - contribution),
-        is_recipient: String(report.user_id || "") === recipientId,
+        is_recipient: isRecipient,
+        counted_valid: valid,
       };
     });
 
-    const pool = roundMoneyV360(rows.reduce((sum, row) => sum + row.contribution, 0));
+    const pool = roundMoneyV360(rows.reduce((sum, row) => sum + row.contribution + row.admin_extra, 0));
+    const validCount = rows.filter(row => row.counted_valid).length;
     const recipient = rows.find(row => row.is_recipient);
     if (enabled && recipient) recipient.final = roundMoneyV360(recipient.original + pool);
 
     const originalTotal = roundMoneyV360(rows.reduce((sum, row) => sum + row.original, 0));
-    let finalTotal = roundMoneyV360(rows.reduce((sum, row) => sum + row.final, 0));
-    const roundingDifference = roundMoneyV360(originalTotal - finalTotal);
-    if (enabled && recipient && roundingDifference !== 0) {
-      recipient.final = roundMoneyV360(recipient.final + roundingDifference);
-      finalTotal = roundMoneyV360(rows.reduce((sum, row) => sum + row.final, 0));
-    }
+    const finalTotal = roundMoneyV360(rows.reduce((sum, row) => sum + row.final, 0));
 
     return {
       enabled,
       configured: Boolean(recipientId),
       recipient_user_id: recipientId || null,
-      percent,
-      minimum,
+      discount,
+      adminExtra,
+      validCount,
       pool,
       originalTotal,
       finalTotal,
@@ -5957,12 +6219,14 @@
     const accountMap = Object.fromEntries((data.accounts||[]).map(account=>[account.id,account]));
     setHeader("Inicio", `${selectedPeriod?.is_active?"● Período en vivo":"Período histórico"} · ${selectedPeriod?.name||periodRangeLabel(selectedPeriod)||state.adminWeek}`);
 
-    $("#content").innerHTML = `<section class="admin-command-hero admin-command-hero-v300"><div><span class="reports-kicker">RESUMEN DEL PERÍODO</span><h2>${esc(selectedPeriod?.name||periodRangeLabel(selectedPeriod)||state.adminWeek)}</h2><div class="admin-hero-stats-v300"><span><b>${reports.length}</b> cliperos</span><span><b>${data.videos.length}</b> videos</span><span><b>${num(totalViews)}</b> vistas</span><span><b>${money(projected)}</b> proyectado</span></div></div><div class="admin-home-tools-v300"><label class="period-select-v224">${uiIcon("history",14)}<select id="reportPeriodSelect">${periods.map(period=>`<option value="${period.start_date}" ${period.start_date===state.adminWeek?"selected":""}>${esc(period.name||periodRangeLabel(period))}${period.is_active?" · ACTIVO":""}</option>`).join("")}</select></label><button id="exportReportsBtnV300" class="btn btn-excel-v330" type="button" title="Exportar Excel">${uiIcon("report",15)}<span>Excel</span></button></div></section>
+    $("#content").innerHTML = `<section class="admin-command-hero admin-command-hero-v300"><div><span class="reports-kicker">RESUMEN DEL PERÍODO</span><h2>${esc(selectedPeriod?.name||periodRangeLabel(selectedPeriod)||state.adminWeek)}</h2><div class="admin-hero-stats-v300"><span><b>${reports.length}</b> cliperos</span><span><b>${data.videos.length}</b> videos</span><span><b>${num(totalViews)}</b> vistas</span><span><b>${money(projected)}</b> proyectado</span></div></div><div class="admin-home-tools-v300"><label class="period-select-v224">${uiIcon("history",14)}<select id="reportPeriodSelect">${periods.map(period=>`<option value="${period.start_date}" ${period.start_date===state.adminWeek?"selected":""}>${esc(period.name||periodRangeLabel(period))}${period.is_active?" · ACTIVO":""}</option>`).join("")}</select></label><div class="export-btn-group-v370"><button id="exportReportsBtnV300" class="btn btn-excel-v330" type="button" title="Exportar Excel">${uiIcon("report",15)}<span>Excel</span></button><button id="exportImageBtnV370" class="btn btn-secondary" type="button" title="Exportar Imagen">🖼️<span>Imagen</span></button><button id="exportPdfBtnV370" class="btn btn-secondary" type="button" title="Exportar PDF">📄<span>PDF</span></button></div></div></section>
       ${adminPlatformOverviewV280(data.videos)}
       ${adminLeaderVideosV300(data.videos,accountMap)}
       <section class="card report-list-card-v224 executive-report-list admin-evaluation-v300"><div class="report-list-head-v224"><div><span class="section-eyebrow">OPERACIÓN</span><h2>Evaluación de cliperos</h2></div><span class="report-live-note"><i></i> En vivo</span></div>${adminReportsTable(reports)}</section>`;
     $("#reportPeriodSelect")?.addEventListener("change",event=>{state.adminWeek=event.target.value;state.adminVideoData=null;renderAdminReportsV300();});
     $("#exportReportsBtnV300")?.addEventListener("click",()=>exportWeeklyExcel(reports));
+    $("#exportImageBtnV370")?.addEventListener("click",()=>exportReportImageV370(reports));
+    $("#exportPdfBtnV370")?.addEventListener("click",()=>exportReportPdfV370(reports));
     bindAdminReportButtons();
     animateDynamicNumbers($("#content"));
   }
@@ -6032,7 +6296,7 @@
     const totalViews=state.videos.reduce((sum,v)=>sum+Number(v.views||0),0);
     const topVideos=[...state.videos].sort((a,b)=>Number(b.views||0)-Number(a.views||0)||Number(b.likes||0)-Number(a.likes||0)).slice(0,5);
     setHeader("Inicio", `${deadlinePassed?"Período cerrado":"● Período en vivo"} · ${periodRangeLabel(s)}`);
-    $("#content").innerHTML=`${clipperAccessPaymentMarkupV320()}<section class="admin-command-hero admin-command-hero-v300 clipper-command-hero-v330"><div><span class="reports-kicker">RESUMEN DEL PERÍODO</span><h2>${esc(`${state.profile.names||""} ${state.profile.surnames||""}`.trim() || state.profile.username)}</h2><div class="admin-hero-stats-v300"><span><b>${state.videos.length}</b> videos</span><span><b>${activeAccounts().length}</b> cuentas</span><span><b>${num(totalViews)}</b> vistas</span><span><b>${money(basePay)}</b> pago por metas</span></div></div><div class="clipper-home-tools-v330"><button id="quickAddBtn" class="btn btn-primary" ${!editable?"disabled":""}>${uiIcon("plus",14)} ${clipperUploadEnabledV320()?"Agregar videos":"Pago pendiente"}</button><button id="viewVideosBtn" class="btn btn-secondary">Mis videos</button><button id="refreshMyMetricsBtn" class="icon-action" title="Actualizar métricas">${uiIcon("sync",15)}</button></div></section>
+    $("#content").innerHTML=`${avatarReminderMarkupV370()}${clipperAccessPaymentMarkupV320()}<section class="admin-command-hero admin-command-hero-v300 clipper-command-hero-v330"><div><span class="reports-kicker">RESUMEN DEL PERÍODO</span><h2>${esc(`${state.profile.names||""} ${state.profile.surnames||""}`.trim() || state.profile.username)}</h2><div class="admin-hero-stats-v300"><span><b>${state.videos.length}</b> videos</span><span><b>${activeAccounts().length}</b> cuentas</span><span><b>${num(totalViews)}</b> vistas</span><span><b>${money(basePay)}</b> pago por metas</span></div></div><div class="clipper-home-tools-v330"><button id="quickAddBtn" class="btn btn-primary" ${!editable?"disabled":""}>${uiIcon("plus",14)} ${clipperUploadEnabledV320()?"Agregar videos":"Pago pendiente"}</button><button id="viewVideosBtn" class="btn btn-secondary">Mis videos</button><button id="refreshMyMetricsBtn" class="icon-action" title="Actualizar métricas">${uiIcon("sync",15)}</button></div></section>
       ${adminPlatformOverviewV280(state.videos)}
       <section class="card admin-leaders-v300 clipper-best-v330"><div class="admin-section-head-v300"><div><span class="section-eyebrow">TU RENDIMIENTO</span><h2>Mejores videos</h2></div><small>Más vistos del período</small></div>${videosTable(topVideos,state.accounts,false,false)}</section>
       <section class="network-progress-section network-progress-section-v234 clipper-accounts-v330"><div class="section-title-row"><div><span class="section-eyebrow">MIS CUENTAS</span><h3>Pago por cuenta</h3></div><button id="goNetworksBtn" class="btn btn-ghost btn-sm">${uiIcon("network",14)} Redes</button></div>${clipperAccountCardsV280(accountPayments)}</section>`;
@@ -6040,8 +6304,14 @@
     bindClipperAccessPaymentActionsV320($("#content"));
     $("#viewVideosBtn")?.addEventListener("click",()=>navigate("videos"));
     $("#goNetworksBtn")?.addEventListener("click",()=>navigate("networks"));
+    $("#avatarReminderBtnV370")?.addEventListener("click",()=>navigate("profile"));
     $("#refreshMyMetricsBtn")?.addEventListener("click",async()=>{showLoading(true);try{await runLiveMetricSync(false);await loadClipperCurrentData();await renderClipperDashboardV300();}finally{showLoading(false);}});
     animateDynamicNumbers($("#content"));
+  }
+
+  function avatarReminderMarkupV370() {
+    if (state.profile?.avatar_url) return "";
+    return `<div class="avatar-reminder-v370"><span class="avatar-reminder-icon-v370">📸</span><div class="avatar-reminder-copy-v370"><strong>Sube tu foto de perfil</strong><small>Usa la misma foto principal de tu cuenta de TikTok. Aparecerá como tu logo en los reportes de pago (imagen y PDF).</small></div><button id="avatarReminderBtnV370" class="btn btn-primary btn-sm" type="button">Subir foto</button></div>`;
   }
 
   async function renderAdminPaymentsV300() {
@@ -6073,7 +6343,9 @@
     const total=reports.reduce((sum,r)=>sum+reportFinalTotalV360(r),0), missing=reports.filter(r=>!r.payment_account).length;
     const paidAccounts=accountRows.filter(r=>r.pay_enabled!==false&&Number(r.final_pay||0)>0).length;
     const bonuses=accountRows.filter(r=>r.bonus_qualified).length;
-    $("#content").innerHTML=`<section class="payment-summary-v300"><span><small>PROYECTADO</small><b>${money(total)}</b></span><span><small>CUENTAS CON PAGO</small><b>${paidAccounts}</b></span><span><small>CUENTAS CON BONO</small><b>${bonuses}</b></span><span><small>SIN DATOS DE PAGO</small><b>${missing}</b></span></section><div class="payment-rule-strip-v330"><b>Cálculo web:</b> cada cuenta se evalúa por separado · regla de tres hasta su meta · tope base por plataforma${rule.bonus_enabled?` · +${money(ba)} desde ${num(bv)} vistas`:" · bono desactivado"}.</div><section class="payment-list-v300">${reports.map(r=>{const detail=accountRows.filter(row=>row.report_id===r.report_id&&row.pay_enabled!==false).sort((a,b)=>Number(b.views||0)-Number(a.views||0)||String(a.account_name||"").localeCompare(String(b.account_name||""),"es"));const mapped=state.paymentTotalsV280?.[r.report_id]||{};const accountTotal=roundMoneyV350(Number(mapped.base_pay||0)+Number(mapped.automatic_bonus_pay||0));const accountsHtml=detail.map(row=>`<span>${platformLogo(row.platform)} ${esc(row.account_name||platformLabel(row.platform))}: <b>${num(row.views)} vistas · ${money(row.final_pay)}</b>${row.bonus_qualified?` <i class="bonus-hit-v330">BONO +${money(row.automatic_bonus_pay)}</i>`:row.base_qualified?` <i>TOPE ${money(row.qualified_account_pay)}</i>`:Number(row.views||0)>0?' <i class="no-pay-v330">PROPORCIONAL</i>':' <i class="no-pay-v330">S/0</i>'}</span>`).join("");return `<article class="payment-row-v300"><div class="payment-person-v300"><strong>${esc(`${r.names||r.username||""} ${r.surnames||""}`.trim())}</strong><small>@${esc(r.username||"")} · ${paymentMethodLabel(r.payment_method)} ${r.payment_account?`· ${esc(r.payment_account)}`:"· Sin datos"}</small></div><div class="payment-accounts-v300">${accountsHtml||'<span class="muted">Sin cuentas remuneradas con videos</span>'}</div><div class="payment-money-v300"><span><small>Cuentas + bono 700K</small><b>${money(accountTotal)}</b></span><span><small>Ajuste manual</small><b>${money(mapped.manual_bonus_pay??r.bonus_pay??0)}</b></span><span><small>Pago final</small><strong>${money(reportFinalTotalV360(r))}</strong></span></div><div class="payment-actions-v300">${statusBadge(r.status)}<button class="btn btn-secondary btn-sm" data-admin-report="${r.report_id}">Evaluar</button></div></article>`;}).join("")||'<div class="empty">Sin reportes.</div>'}</section>`;
+    $("#content").innerHTML=`<section class="payment-summary-v300"><span><small>PROYECTADO</small><b>${money(total)}</b></span><span><small>CUENTAS CON PAGO</small><b>${paidAccounts}</b></span><span><small>CUENTAS CON BONO</small><b>${bonuses}</b></span><span><small>SIN DATOS DE PAGO</small><b>${missing}</b></span></section><div class="export-btn-group-v370" style="margin:0 0 14px"><button id="exportImageBtnV370pay" class="btn btn-secondary" type="button" title="Exportar Imagen">🖼️<span>Imagen</span></button><button id="exportPdfBtnV370pay" class="btn btn-secondary" type="button" title="Exportar PDF">📄<span>PDF</span></button></div><div class="payment-rule-strip-v330"><b>Cálculo web:</b> cada cuenta se evalúa por separado · regla de tres hasta su meta · tope base por plataforma${rule.bonus_enabled?` · +${money(ba)} desde ${num(bv)} vistas`:" · bono desactivado"}.</div><section class="payment-list-v300">${reports.map(r=>{const detail=accountRows.filter(row=>row.report_id===r.report_id&&row.pay_enabled!==false).sort((a,b)=>Number(b.views||0)-Number(a.views||0)||String(a.account_name||"").localeCompare(String(b.account_name||""),"es"));const mapped=state.paymentTotalsV280?.[r.report_id]||{};const accountTotal=roundMoneyV350(Number(mapped.base_pay||0)+Number(mapped.automatic_bonus_pay||0));const accountsHtml=detail.map(row=>`<span>${platformLogo(row.platform)} ${esc(row.account_name||platformLabel(row.platform))}: <b>${num(row.views)} vistas · ${money(row.final_pay)}</b>${row.bonus_qualified?` <i class="bonus-hit-v330">BONO +${money(row.automatic_bonus_pay)}</i>`:row.base_qualified?` <i>TOPE ${money(row.qualified_account_pay)}</i>`:Number(row.views||0)>0?' <i class="no-pay-v330">PROPORCIONAL</i>':' <i class="no-pay-v330">S/0</i>'}</span>`).join("");return `<article class="payment-row-v300"><div class="payment-person-v300"><strong>${esc(`${r.names||r.username||""} ${r.surnames||""}`.trim())}</strong><small>@${esc(r.username||"")} · ${paymentMethodLabel(r.payment_method)} ${r.payment_account?`· ${esc(r.payment_account)}`:"· Sin datos"}</small></div><div class="payment-accounts-v300">${accountsHtml||'<span class="muted">Sin cuentas remuneradas con videos</span>'}</div><div class="payment-money-v300"><span><small>Cuentas + bono 700K</small><b>${money(accountTotal)}</b></span><span><small>Ajuste manual</small><b>${money(mapped.manual_bonus_pay??r.bonus_pay??0)}</b></span><span><small>Pago final</small><strong>${money(reportFinalTotalV360(r))}</strong></span></div><div class="payment-actions-v300">${statusBadge(r.status)}<button class="btn btn-secondary btn-sm" data-admin-report="${r.report_id}">Evaluar</button></div></article>`;}).join("")||'<div class="empty">Sin reportes.</div>'}</section>`;
+    $("#exportImageBtnV370pay")?.addEventListener("click",()=>exportReportImageV370(reports));
+    $("#exportPdfBtnV370pay")?.addEventListener("click",()=>exportReportPdfV370(reports));
     bindAdminReportButtons();
   }
 
@@ -6114,7 +6386,716 @@
     state.page="dashboard"; return renderClipperDashboardV300();
   }
   async function renderAdminReports() { return renderAdminReportsV300(); }
-  function renderClipperVideos() { return renderClipperVideosV240(); }
+  function renderClipperVideos() { return renderClipperVideosV400(); }
+
+
+  /* ======================================================================
+     CLIPCONTROL V400 · CAPA ACTIVA FINAL
+     - Rediseño responsive real (desktop / tablet / móvil)
+     - Navegación agrupada y barra móvil de máximo 5 acciones
+     - Dashboard administrativo orientado a operación
+     - Pagos V400 con filtros, detalle, Excel, Imagen y PDF multipágina
+     - Dashboard / historial / perfil del clipero con PAGO FINAL prioritario
+     - Preferencias locales, buscador global, atajos, estado offline y PWA
+     ----------------------------------------------------------------------
+     Esta capa NO cambia URLs/credenciales Supabase ni crea un motor de pago
+     alternativo. Reutiliza las tablas, RPCs y cálculos V350/V360 existentes.
+     ====================================================================== */
+
+  const V400_STORAGE_PREFIX = "clipcontrol_v400:";
+
+  function isAdminV400() {
+    return ["admin", "superadmin"].includes(state.profile?.role);
+  }
+
+  function getLocalV400(key, fallback = null) {
+    try {
+      const value = localStorage.getItem(`${V400_STORAGE_PREFIX}${key}`);
+      return value == null ? fallback : JSON.parse(value);
+    } catch (_) { return fallback; }
+  }
+
+  function setLocalV400(key, value) {
+    try { localStorage.setItem(`${V400_STORAGE_PREFIX}${key}`, JSON.stringify(value)); } catch (_) {}
+  }
+
+  function avatarMarkupV400(profile = {}, size = "md") {
+    const name = `${profile.names || profile.name || profile.username || "?"} ${profile.surnames || ""}`.trim();
+    const initials = name.split(/\s+/).filter(Boolean).slice(0,2).map(part => part[0]?.toUpperCase()).join("") || "?";
+    const url = profile.avatar_url || profile.avatarUrl || "";
+    return `<span class="avatar-v400 avatar-v400-${size}">${url ? `<img src="${esc(url)}" alt="${esc(name)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove();this.parentElement.dataset.fallback='${esc(initials)}'">` : ""}<span>${esc(initials)}</span></span>`;
+  }
+
+  function primaryAliasV400(report, accounts = []) {
+    const own = accounts.filter(account => String(account.user_id || "") === String(report.user_id || "") && account.active !== false);
+    const preferred = own.find(account => account.platform === "tiktok") || own[0];
+    const raw = String(preferred?.account_name || preferred?.social_alias || report.social_alias || report.username || "").trim();
+    return raw ? (raw.startsWith("@") ? raw : `@${raw}`) : "—";
+  }
+
+  function firstNameV400(report = {}) {
+    return String(report.names || report.username || "Clipero").trim().split(/\s+/)[0] || "Clipero";
+  }
+
+  function fullNameV400(report = {}) {
+    return `${report.names || report.username || ""} ${report.surnames || ""}`.trim() || "Clipero";
+  }
+
+  function safePayMethodV400(report = {}) {
+    return paymentMethodLabel(report.payment_method || "") || "Pendiente";
+  }
+
+  function ensureV400Shell() {
+    const topActions = $(".top-actions");
+    if (topActions && !$("#globalSearchBtnV400")) {
+      const button = document.createElement("button");
+      button.id = "globalSearchBtnV400";
+      button.className = "top-search-v400";
+      button.type = "button";
+      button.innerHTML = `${uiIcon("search",15)}<span>Buscar</span><kbd>⌘K</kbd>`;
+      button.setAttribute("aria-label", "Buscar en ClipControl");
+      topActions.insertBefore(button, topActions.firstChild);
+      button.addEventListener("click", openGlobalSearchV400);
+    }
+    if (topActions && !$("#offlineBadgeV400")) {
+      const badge = document.createElement("span");
+      badge.id = "offlineBadgeV400";
+      badge.className = "offline-badge-v400 hidden";
+      badge.textContent = "Sin conexión";
+      topActions.insertBefore(badge, $("#globalSearchBtnV400")?.nextSibling || topActions.firstChild);
+    }
+    if (topActions) {
+      let avatarButton = $("#topAvatarV400");
+      if (!avatarButton) {
+        avatarButton = document.createElement("button");
+        avatarButton.id = "topAvatarV400";
+        avatarButton.className = "top-avatar-v400";
+        avatarButton.type = "button";
+        avatarButton.setAttribute("aria-label", "Abrir perfil de usuario");
+        topActions.appendChild(avatarButton);
+        avatarButton.addEventListener("click", () => state.profile?.role === "clipper" ? navigate("profile") : openMoreSheetV400());
+      }
+      avatarButton.innerHTML = state.profile ? avatarMarkupV400(state.profile, "sm") : "";
+    }
+    if (!$("#backTopV400")) {
+      const back = document.createElement("button");
+      back.id = "backTopV400";
+      back.className = "back-top-v400";
+      back.type = "button";
+      back.setAttribute("aria-label", "Volver arriba");
+      back.innerHTML = "↑";
+      document.body.appendChild(back);
+      back.addEventListener("click", () => window.scrollTo({ top:0, behavior:"smooth" }));
+    }
+    updateConnectivityV400();
+  }
+
+  function updateConnectivityV400() {
+    const offline = navigator.onLine === false;
+    $("#offlineBadgeV400")?.classList.toggle("hidden", !offline);
+    document.body.classList.toggle("is-offline-v400", offline);
+  }
+
+  function setHeader(title, subtitle = "") {
+    ensureV400Shell();
+    const titleEl = $("#pageTitle");
+    const subtitleEl = $("#pageSubtitle");
+    if (titleEl) titleEl.textContent = title;
+    if (subtitleEl) subtitleEl.textContent = subtitle;
+    const badge = $("#weekBadge");
+    if (badge) {
+      const period = state.currentSummary || state.activePeriod || { week_start: state.adminWeek };
+      let label = "";
+      try { label = periodRangeLabel(period); } catch (_) {}
+      badge.textContent = label || `Semana ${weekLabel()}`;
+    }
+    const search = $("#globalSearchBtnV400");
+    if (search) search.classList.toggle("hidden", !isAdminV400());
+    document.body.dataset.currentPage = state.page || "dashboard";
+  }
+
+  function navButtonV400(id, icon, label, extra = "") {
+    return `<button type="button" data-page="${id}" class="${state.page===id?"active":""} ${extra}">${navIcon(icon)}<span class="nav-label">${esc(label)}</span></button>`;
+  }
+
+  function buildNav() {
+    if (!state.profile) return;
+    ensureV400Shell();
+    const admin = isAdminV400();
+    const nav = $("#nav");
+    if (nav) {
+      if (admin) {
+        nav.innerHTML = `
+          <div class="nav-group-v400"><span>OPERACIÓN</span>
+            ${navButtonV400("dashboard","home","Inicio")}
+            ${navButtonV400("reports","report","Reportes")}
+            ${navButtonV400("videos","video","Videos")}
+            ${navButtonV400("metrics","activity","Métricas")}
+          </div>
+          <div class="nav-group-v400"><span>GESTIÓN</span>
+            ${navButtonV400("clippers","users","Cliperos")}
+            ${navButtonV400("payments","wallet","Pagos")}
+            ${navButtonV400("announcements","megaphone","Comunicados")}
+          </div>
+          <div class="nav-group-v400"><span>SISTEMA</span>
+            ${navButtonV400("settings","settings","Ajustes")}
+          </div>`;
+      } else {
+        nav.innerHTML = `
+          <div class="nav-group-v400"><span>INICIO</span>
+            ${navButtonV400("dashboard","home","Inicio")}
+            ${navButtonV400("videos","video","Videos")}
+            ${navButtonV400("networks","network","Cuentas")}
+            ${navButtonV400("history","history","Historial")}
+          </div>
+          <div class="nav-group-v400"><span>CUENTA</span>
+            ${navButtonV400("profile","user","Perfil")}
+            <button type="button" data-nav-action-v400="notices">${navIcon("megaphone")}<span class="nav-label">Avisos</span></button>
+          </div>`;
+      }
+      $$('[data-page]', nav).forEach(button => button.addEventListener("click", async () => {
+        state.page = button.dataset.page;
+        state.selectedClipperId = null;
+        setLocalV400("last_page", state.page);
+        $("#sidebar")?.classList.remove("open");
+        buildNav();
+        await touchPresence(true).catch(() => null);
+        await renderPage(true);
+      }));
+      $$('[data-nav-action-v400="notices"]', nav).forEach(button => button.addEventListener("click", openNoticeInbox));
+    }
+
+    const mobileNav = $("#mobileNav");
+    if (!mobileNav) return;
+    const mobile = admin
+      ? [["dashboard","home","Inicio"],["reports","report","Reportes"],["payments","wallet","Pagos"],["clippers","users","Cliperos"],["__more","menu","Más"]]
+      : [["dashboard","home","Inicio"],["videos","video","Videos"],["__add","plus","Agregar"],["networks","network","Cuentas"],["__more","menu","Más"]];
+    mobileNav.innerHTML = mobile.map(([id,icon,label]) => `<button type="button" data-mobile-page="${id}" class="${state.page===id?"active":""} ${id==="__add"?"mobile-add":""}">${uiIcon(icon,19)}<span>${esc(label)}</span></button>`).join("");
+    $$('[data-mobile-page]', mobileNav).forEach(button => button.addEventListener("click", async () => {
+      const id = button.dataset.mobilePage;
+      if (id === "__add") return handleQuickRegisterAction();
+      if (id === "__more") return openMoreSheetV400();
+      state.page = id;
+      state.selectedClipperId = null;
+      setLocalV400("last_page", state.page);
+      buildNav();
+      await touchPresence(true).catch(() => null);
+      await renderPage(true);
+    }));
+  }
+
+  function navigate(page) {
+    state.page = page;
+    state.selectedClipperId = null;
+    setLocalV400("last_page", page);
+    buildNav();
+    renderPage(true);
+  }
+
+  function openMoreSheetV400() {
+    const admin = isAdminV400();
+    const items = admin
+      ? [["videos","video","Videos"],["metrics","activity","Métricas"],["announcements","megaphone","Comunicados"],["settings","settings","Ajustes"]]
+      : [["history","history","Historial"],["profile","user","Perfil"]];
+    openModal(`<div class="modal-head"><div><span class="section-eyebrow">MÁS OPCIONES</span><h2>${admin?"Administración":"Mi cuenta"}</h2></div><button class="modal-close" data-close-v400 aria-label="Cerrar">×</button></div>
+      <div class="modal-body more-sheet-v400">
+        ${items.map(([page,icon,label])=>`<button type="button" data-more-page-v400="${page}">${uiIcon(icon,19)}<span>${label}</span>${uiIcon("arrow",15)}</button>`).join("")}
+        <button type="button" data-more-action-v400="notices">${uiIcon("megaphone",19)}<span>${admin?"Notificaciones":"Avisos"}</span>${uiIcon("arrow",15)}</button>
+        <button type="button" data-more-action-v400="theme">${uiIcon("activity",19)}<span>Tema</span>${uiIcon("arrow",15)}</button>
+        <div class="more-profile-v400">${avatarMarkupV400(state.profile,"sm")}<div><b>${esc(`${state.profile.names||""} ${state.profile.surnames||""}`.trim()||state.profile.username)}</b><small>@${esc(state.profile.username||"")}</small></div></div>
+        <button type="button" class="danger" data-more-action-v400="logout">${uiIcon("arrow",19)}<span>Cerrar sesión</span></button>
+      </div>`, "small", layer => {
+        $("[data-close-v400]",layer)?.addEventListener("click",closeModal);
+        $$('[data-more-page-v400]',layer).forEach(button=>button.addEventListener("click",()=>{const page=button.dataset.morePageV400;closeModal();navigate(page);}));
+        $$('[data-more-action-v400]',layer).forEach(button=>button.addEventListener("click",()=>{
+          const action=button.dataset.moreActionV400;
+          if(action==="notices"){closeModal();openNoticeInbox();}
+          if(action==="theme"){toggleTheme();}
+          if(action==="logout"){closeModal();$("#logoutBtn")?.click();}
+        }));
+      });
+  }
+
+  function openModal(html, size = "", onOpen = null) {
+    const layer = $("#modalLayer");
+    if (!layer) return;
+    const mobile = window.matchMedia?.("(max-width: 680px)")?.matches;
+    layer.innerHTML = `<div class="modal-backdrop"><div class="modal ${size} ${mobile?"mobile-sheet-v400":""}" role="dialog" aria-modal="true">${html}</div></div>`;
+    document.body.classList.add("modal-open-v400");
+    const modal = $(".modal", layer);
+    if (onOpen) onOpen(layer);
+    requestAnimationFrame(() => {
+      const focusable = modal?.querySelector("input:not([disabled]),select:not([disabled]),textarea:not([disabled]),button:not([disabled])");
+      focusable?.focus?.({preventScroll:true});
+    });
+  }
+
+  function closeModal() {
+    const layer = $("#modalLayer");
+    if (layer) layer.innerHTML = "";
+    document.body.classList.remove("modal-open-v400");
+  }
+
+  async function loadGlobalSearchDataV400(force = false) {
+    const cached = state.globalSearchDataV400;
+    if (!force && cached && Date.now() - cached.loadedAt < 120000) return cached;
+    const week = state.adminWeek || state.activePeriod?.start_date || currentWeekStartISO();
+    const [users, accounts, reports, videos] = await Promise.all([
+      query(state.supabase.from("admin_clipper_overview").select("*").limit(600)).catch(()=>[]),
+      query(state.supabase.from("social_accounts").select("id,user_id,platform,account_name,social_alias,channel_url,active").limit(1500)).catch(()=>[]),
+      query(state.supabase.from("weekly_report_summary").select("*").eq("week_start",week).limit(600)).catch(()=>[]),
+      query(state.supabase.from("videos").select("id,user_id,report_id,video_url,external_title,platform,views,deleted_at").is("deleted_at",null).limit(2500)).catch(()=>[]),
+    ]);
+    const data = {users,accounts,reports,videos,loadedAt:Date.now()};
+    state.globalSearchDataV400 = data;
+    return data;
+  }
+
+  async function openGlobalSearchV400() {
+    if (!isAdminV400()) return;
+    openModal(`<div class="modal-head command-head-v400"><div><span class="section-eyebrow">BUSCADOR GLOBAL</span><h2>Buscar en ClipControl</h2></div><button class="modal-close" data-search-close-v400 aria-label="Cerrar">×</button></div>
+      <div class="modal-body command-body-v400"><label class="command-search-v400">${uiIcon("search",18)}<input id="globalSearchInputV400" autocomplete="off" placeholder="Nombre, usuario, TikTok, teléfono, cuenta, titular o URL…"><kbd>ESC</kbd></label><div id="globalSearchResultsV400" class="command-results-v400"><div class="command-hint-v400">Escribe al menos 2 caracteres.</div></div></div>`, "wide", layer => {
+        $("[data-search-close-v400]",layer)?.addEventListener("click",closeModal);
+        const input=$("#globalSearchInputV400",layer), box=$("#globalSearchResultsV400",layer);
+        input?.addEventListener("input",debounce(async()=>{
+          const term=String(input.value||"").trim().toLowerCase();
+          if(term.length<2){box.innerHTML='<div class="command-hint-v400">Escribe al menos 2 caracteres.</div>';return;}
+          box.innerHTML='<div class="command-hint-v400">Buscando…</div>';
+          const data=await loadGlobalSearchDataV400();
+          const matches=[];
+          const reportsByUser=Object.fromEntries(data.reports.map(r=>[r.user_id,r]));
+          for(const user of data.users){
+            const text=`${user.names||""} ${user.surnames||""} ${user.username||""} ${user.phone||""} ${user.payment_account||""} ${user.payment_holder||""}`.toLowerCase();
+            const userAccounts=data.accounts.filter(a=>String(a.user_id)===String(user.user_id));
+            const accountMatch=userAccounts.some(a=>`${a.account_name||""} ${a.social_alias||""} ${a.channel_url||""}`.toLowerCase().includes(term));
+            if(text.includes(term)||accountMatch){
+              const report=reportsByUser[user.user_id];
+              const videoCount=data.videos.filter(v=>String(v.user_id)===String(user.user_id)).length;
+              matches.push({type:"user",user,report,videoCount,accounts:userAccounts});
+            }
+          }
+          const videoMatches=data.videos.filter(v=>`${v.external_title||""} ${v.video_url||""}`.toLowerCase().includes(term)).slice(0,8);
+          box.innerHTML = `${matches.slice(0,12).map(item=>{const u=item.user,r=item.report;return `<button class="command-user-result-v400" type="button" data-search-user-v400="${esc(u.user_id)}">${avatarMarkupV400(u,"sm")}<span><b>${esc(`${u.names||u.username||""} ${u.surnames||""}`.trim())}</b><small>@${esc(u.username||"")} · ${item.accounts.map(a=>esc(a.account_name||a.social_alias||"")).filter(Boolean).slice(0,2).join(" · ")||"Sin cuentas"}</small></span><em>${item.videoCount} videos${r?` · ${money(reportFinalTotalV360(r))}`:""}</em>${uiIcon("arrow",15)}</button>`;}).join("")}${videoMatches.map(v=>`<a class="command-video-result-v400" href="${esc(v.video_url)}" target="_blank" rel="noopener">${platformLogo(v.platform)}<span><b>${esc(v.external_title||"Video")}</b><small>${num(v.views||0)} vistas · ${esc(String(v.video_url||"").replace(/^https?:\/\//,""))}</small></span>${uiIcon("arrow",15)}</a>`).join("")}` || '<div class="empty">Sin coincidencias.</div>';
+          $$('[data-search-user-v400]',box).forEach(button=>button.addEventListener("click",()=>{state.selectedClipperId=button.dataset.searchUserV400;state.page="clippers";closeModal();buildNav();renderPage(true);}));
+        },240));
+      });
+  }
+
+  function attentionCardV400(icon, title, value, text, page, cls = "") {
+    return `<button type="button" class="attention-card-v400 ${cls}" data-attention-page-v400="${page}"><span class="attention-icon-v400">${icon}</span><div><small>${esc(title)}</small><strong>${num(value)}</strong><p>${esc(text)}</p></div>${uiIcon("arrow",16)}</button>`;
+  }
+
+  async function renderAdminDashboardV400() {
+    setHeader("Inicio", "Resumen operativo");
+    try { await state.supabase.rpc("clipcontrol_auto_submit_due_reports_v234"); } catch (_) {}
+    const periods = await query(state.supabase.from("reporting_periods").select("*").order("start_date",{ascending:false}).limit(20));
+    if (!state.adminWeek) state.adminWeek = state.activePeriod?.start_date || periods?.[0]?.start_date || currentWeekStartISO();
+    const reports = await query(state.supabase.from("weekly_report_summary").select("*").eq("week_start",state.adminWeek).order("total_views",{ascending:false}));
+    const reportIds=reports.map(r=>r.report_id).filter(Boolean);
+    const [platformRows,data,paymentRules,paymentTotals,distributionSettings,overview,profiles] = await Promise.all([
+      reportIds.length?query(state.supabase.from("weekly_report_platform_summary").select("*").in("report_id",reportIds)):Promise.resolve([]),
+      loadAdminVideoCenterData(reports,true),
+      query(state.supabase.from("platform_payment_rules").select("*")).catch(()=>[]),
+      fetchAdminPeriodPaymentTotalsV280(state.adminWeek),
+      fetchPaymentDistributionSettingsV360(),
+      query(state.supabase.from("admin_clipper_overview").select("user_id,role,active,payment_account,username,names,surnames").limit(600)).catch(()=>[]),
+      query(state.supabase.from("profiles").select("id,avatar_url").limit(600)).catch(()=>[]),
+    ]);
+    state.adminReportIds=reportIds;
+    state.adminPlatformRows=platformRows||[];
+    state.platformRuleMap=Object.fromEntries((paymentRules||[]).map(rule=>[rule.platform,rule]));
+    state.paymentTotalsV280=Object.fromEntries((paymentTotals||[]).map(row=>[row.report_id,row]));
+    state.paymentDistributionSettingsV360=distributionSettings||{};
+    state.paymentDistributionV360=buildPaymentDistributionV360(reports,state.paymentDistributionSettingsV360);
+    const selectedPeriod=periods.find(p=>p.start_date===state.adminWeek) || {start_date:state.adminWeek};
+    const activeClippers=(overview||[]).filter(u=>u.role==="clipper"&&u.active!==false);
+    const reportUsers=new Set(reports.map(r=>String(r.user_id)));
+    const profileMap=Object.fromEntries((profiles||[]).map(p=>[String(p.id),p]));
+    const reportsReceived=reports.filter(r=>r.status&&r.status!=="draft").length;
+    const missingReports=activeClippers.filter(u=>!reportUsers.has(String(u.user_id))).length + reports.filter(r=>!r.status||r.status==="draft").length;
+    const missingPhoto=activeClippers.filter(u=>!profileMap[String(u.user_id)]?.avatar_url).length;
+    const missingPay=activeClippers.filter(u=>!String(u.payment_account||"").trim()).length;
+    const metricPending=(data.videos||[]).filter(v=>["pending","syncing","partial"].includes(metricBucket(v))).length;
+    const metricErrors=(data.videos||[]).filter(v=>metricBucket(v)==="error").length;
+    const observed=reports.filter(r=>r.status==="observed").length;
+    const projected=roundMoneyV360(reports.reduce((sum,r)=>sum+reportFinalTotalV360(r),0));
+    const totalExpected=Math.max(activeClippers.length,reports.length,1);
+    const completion=Math.round(clamp((reportsReceived/totalExpected)*100,0,100));
+    const topVideos=[...(data.videos||[])].sort((a,b)=>Number(b.views||0)-Number(a.views||0)).slice(0,3);
+    const attention=[
+      attentionCardV400("📋","Sin reporte",missingReports,"Requieren seguimiento","reports",missingReports?"warn":"ok"),
+      attentionCardV400("📷","Sin foto",missingPhoto,"Perfil visual incompleto","clippers",missingPhoto?"warn":"ok"),
+      attentionCardV400("💳","Sin datos de pago",missingPay,"No podrán procesarse","clippers",missingPay?"warn":"ok"),
+      attentionCardV400("⏳","Métricas pendientes",metricPending,"Pendientes o parciales","metrics",metricPending?"review":"ok"),
+      attentionCardV400("⚠️","Errores de métricas",metricErrors,"Necesitan reintento","metrics",metricErrors?"danger":"ok"),
+      attentionCardV400("👁️","Reportes observados",observed,"Esperan corrección","reports",observed?"review":"ok"),
+    ].join("");
+    $("#content").innerHTML=`
+      <section class="dashboard-head-v400">
+        <div><span class="section-eyebrow">${selectedPeriod?.is_active?"PERÍODO ACTIVO":"PERÍODO SELECCIONADO"}</span><h2>Buenas ${new Date().getHours()<12?"mañanas":new Date().getHours()<19?"tardes":"noches"}</h2><p>${esc(periodRangeLabel(selectedPeriod)||state.adminWeek)}</p></div>
+        <label class="period-picker-v400">${uiIcon("history",15)}<select id="dashboardPeriodV400">${periods.map(p=>`<option value="${p.start_date}" ${p.start_date===state.adminWeek?"selected":""}>${esc(p.name||periodRangeLabel(p))}${p.is_active?" · ACTIVO":""}</option>`).join("")}</select></label>
+      </section>
+      <section class="kpi-grid-v400">
+        <article><small>CLIPEROS ACTIVOS</small><strong>${activeClippers.length||reports.length}</strong><span>cliperos</span></article>
+        <article><small>REPORTES RECIBIDOS</small><strong>${reportsReceived}/${totalExpected}</strong><span>${completion}% completado</span></article>
+        <article><small>VIDEOS</small><strong>${num((data.videos||[]).length)}</strong><span>del período</span></article>
+        <article class="money"><small>PAGO PROYECTADO</small><strong>${money(projected)}</strong><span>pago final total</span></article>
+      </section>
+      <section class="period-status-v400 card"><div class="period-status-copy-v400"><div><span class="section-eyebrow">ESTADO DEL PERÍODO</span><h3>${reportsReceived} de ${totalExpected} reportes recibidos</h3></div><b>${completion}%</b></div><div class="progress-v400"><span style="width:${completion}%"></span></div></section>
+      <section class="dashboard-two-v400">
+        <div class="card attention-panel-v400"><div class="section-title-row"><div><span class="section-eyebrow">NECESITAN ATENCIÓN</span><h3>Prioridades operativas</h3></div></div><div class="attention-grid-v400">${attention}</div></div>
+        <div class="card top-videos-v400"><div class="section-title-row"><div><span class="section-eyebrow">TOP 3 DEL PERÍODO</span><h3>Videos con más vistas</h3></div><button id="rankingFullV400" class="btn btn-ghost btn-sm">Ver ranking</button></div><div class="top-video-list-v400">${topVideos.map((v,i)=>`<a href="${esc(v.video_url)}" target="_blank" rel="noopener"><b class="rank-v400">${i+1}</b><span class="top-thumb-v400">${v.thumbnail_url?`<img src="${esc(v.thumbnail_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`:platformLogo(v.platform)}</span><div><strong>${esc(v.account_name||v.clipper_name||platformLabel(v.platform))}</strong><small>${esc(v.clipper_name||platformLabel(v.platform))}</small></div><em>${num(v.views||0)} vistas</em></a>`).join("")||'<div class="empty">Todavía no hay videos.</div>'}</div></div>
+      </section>
+      <section class="quick-actions-v400"><button data-quick-v400="search">${uiIcon("search",17)}<span>Buscar clipero</span></button><button data-quick-v400="payments">${uiIcon("wallet",17)}<span>Ir a pagos</span></button><button data-quick-v400="reports">${uiIcon("report",17)}<span>Reportes pendientes</span></button><button data-quick-v400="metrics">${uiIcon("sync",17)}<span>Actualizar métricas</span></button></section>`;
+    $("#dashboardPeriodV400")?.addEventListener("change",event=>{state.adminWeek=event.target.value;state.adminVideoData=null;renderAdminDashboardV400();});
+    $$('[data-attention-page-v400]').forEach(button=>button.addEventListener("click",()=>navigate(button.dataset.attentionPageV400)));
+    $("#rankingFullV400")?.addEventListener("click",()=>navigate("videos"));
+    $$('[data-quick-v400]').forEach(button=>button.addEventListener("click",()=>{const action=button.dataset.quickV400;if(action==="search")openGlobalSearchV400();else navigate(action);}));
+    animateDynamicNumbers($("#content"));
+  }
+
+  function paymentRowDataV400(report, accounts, profileMap) {
+    const mapped=state.paymentTotalsV280?.[report.report_id]||{};
+    const dist=state.paymentDistributionV360?.byReport?.[report.report_id]||{};
+    const accountRows=(state.frontendAccountPaymentsV350||[]).filter(row=>row.report_id===report.report_id&&row.pay_enabled!==false);
+    const calc=roundMoneyV360(Number(mapped.base_pay||0)+Number(mapped.automatic_bonus_pay||0)+Number(mapped.manual_bonus_pay??report.bonus_pay??0));
+    const final=roundMoneyV360(reportFinalTotalV360(report));
+    return {
+      report,
+      profile:profileMap[String(report.user_id)]||{},
+      first:firstNameV400(report),
+      full:fullNameV400(report),
+      alias:primaryAliasV400(report,accounts),
+      method:safePayMethodV400(report),
+      account:String(report.payment_account||""),
+      holder:String(report.payment_holder||fullNameV400(report)||""),
+      final,
+      calculated:calc,
+      base:roundMoneyV360(Number(mapped.base_pay||0)),
+      automaticBonus:roundMoneyV360(Number(mapped.automatic_bonus_pay||0)),
+      manualBonus:roundMoneyV360(Number(mapped.manual_bonus_pay??report.bonus_pay??0)),
+      discount:roundMoneyV360(Number(dist.contribution||0)),
+      adminExtra:roundMoneyV360(Number(dist.admin_extra||0)),
+      isRecipient:Boolean(dist.is_recipient),
+      accountRows,
+      views:accountRows.reduce((sum,row)=>sum+Number(row.views||0),0),
+    };
+  }
+
+  function paymentDetailV400(row) {
+    const accounts=row.accountRows;
+    openModal(`<div class="modal-head"><div>${avatarMarkupV400({...row.profile,names:row.full},"sm")}<span class="section-eyebrow">DETALLE DE PAGO</span><h2>${esc(row.full)}</h2><p>${esc(row.alias)}</p></div><button class="modal-close" data-detail-close-v400 aria-label="Cerrar">×</button></div>
+      <div class="modal-body pay-detail-v400">
+        <section class="pay-detail-total-v400"><small>PAGO FINAL</small><strong>${money(row.final)}</strong>${statusBadge(row.report.status)}</section>
+        <div class="pay-detail-accounts-v400">${accounts.map(account=>`<article>${platformBadge(account.platform,true)}<div><b>${esc(account.account_name||platformLabel(account.platform))}</b><small>${num(account.views)} vistas · ${account.video_count||0} videos</small></div><strong>${money(account.final_pay)}</strong></article>`).join("")||'<div class="empty">Sin cuentas remuneradas.</div>'}</div>
+        <section class="pay-detail-grid-v400"><div><span>Vistas</span><b>${num(row.views)}</b></div><div><span>Pago de cuentas</span><b>${money(row.base)}</b></div><div><span>Bono automático</span><b>${money(row.automaticBonus)}</b></div><div><span>Ajuste manual</span><b>${money(row.manualBonus)}</b></div><div><span>Pago calculado</span><b>${money(row.calculated)}</b></div><div><span>Ajuste administrativo</span><b>${row.discount?`− ${money(row.discount)}`:"S/ 0.00"}</b></div></section>
+        <div class="pay-recipient-note-v400 ${row.isRecipient?"show":""}">${row.isRecipient?`Esta persona es el receptor administrativo configurado. El total mostrado ya incorpora la distribución aplicable del período.`:"El desglose administrativo solo es visible para Administración."}</div>
+      </div>`, "medium", layer=>$("[data-detail-close-v400]",layer)?.addEventListener("click",closeModal));
+  }
+
+  async function renderAdminPaymentsV400() {
+    const start=state.adminWeek || state.activePeriod?.start_date || currentWeekStartISO();
+    setHeader("Pagos", periodRangeLabel({week_start:start}));
+    const reportsRaw=await query(state.supabase.from("weekly_report_summary").select("*").eq("week_start",start).order("names"));
+    const reports=[...(reportsRaw||[])];
+    const ids=reports.map(r=>r.report_id).filter(Boolean);
+    const userIds=[...new Set(reports.map(r=>r.user_id).filter(Boolean))];
+    const [platformRows,videos,accounts,paymentRules,settings,distributionSettings,profiles]=await Promise.all([
+      ids.length?query(state.supabase.from("weekly_report_platform_summary").select("*").in("report_id",ids)):Promise.resolve([]),
+      fetchAllAdminVideos(ids),
+      userIds.length?query(state.supabase.from("social_accounts").select("*").in("user_id",userIds).order("platform")):Promise.resolve([]),
+      query(state.supabase.from("platform_payment_rules").select("*")).catch(()=>[]),
+      query(state.supabase.from("app_settings").select("*").eq("id",1).single()).catch(()=>state.settings||{}),
+      fetchPaymentDistributionSettingsV360(),
+      userIds.length?query(state.supabase.from("profiles").select("id,avatar_url").in("id",userIds)).catch(()=>[]):Promise.resolve([]),
+    ]);
+    state.adminPlatformRows=platformRows||[];
+    state.platformRuleMap=Object.fromEntries((paymentRules||[]).map(rule=>[rule.platform,rule]));
+    state.settings={...(state.settings||{}),...(settings||{})};
+    const bundle=buildFrontendPaymentBundleV350(reports,videos,accounts,paymentRules,state.settings);
+    state.frontendAccountPaymentsV350=bundle.accountRows;
+    state.paymentTotalsV280=Object.fromEntries(bundle.totals.map(row=>[row.report_id,row]));
+    state.paymentDistributionSettingsV360=distributionSettings||{};
+    state.paymentDistributionV360=buildPaymentDistributionV360(reports,state.paymentDistributionSettingsV360);
+    const profileMap=Object.fromEntries((profiles||[]).map(p=>[String(p.id),p]));
+    const allRows=reports.map(report=>paymentRowDataV400(report,accounts,profileMap));
+    state.paymentRowsV400=allRows;
+    state.paymentReportsV400=reports;
+    const persisted=getLocalV400("payment_filters",{})||{};
+    state.paymentFiltersV400={search:persisted.search||"",method:persisted.method||"all",sort:persisted.sort||"pay_asc"};
+    const methods=[...new Set(allRows.map(r=>r.method).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"es"));
+    const total=roundMoneyV360(allRows.reduce((sum,row)=>sum+row.final,0));
+    const withPay=allRows.filter(row=>row.final>0).length;
+    const zero=allRows.length-withPay;
+    $("#content").innerHTML=`
+      <section class="payments-head-v400"><div><span class="section-eyebrow">PAGOS DEL PERÍODO</span><h2>${esc(periodRangeLabel({week_start:start}))}</h2><p>Pago final por persona, listo para procesar.</p></div><div class="export-actions-v400"><button id="exportExcelV400" class="btn btn-excel-v330" type="button">${uiIcon("report",15)} Excel</button><button id="exportImageV400" class="btn btn-secondary" type="button">🖼️ Imagen</button><button id="exportPdfV400" class="btn btn-secondary" type="button">📄 PDF</button></div></section>
+      <section class="payment-kpis-v400"><article><small>PERSONAS</small><strong>${allRows.length}</strong></article><article><small>CON PAGO</small><strong>${withPay}</strong></article><article><small>CON S/0</small><strong>${zero}</strong></article><article class="money"><small>TOTAL GENERAL</small><strong>${money(total)}</strong></article></section>
+      <section class="payment-toolbar-v400 card"><label class="payment-search-v400">${uiIcon("search",16)}<input id="paySearchV400" value="${esc(state.paymentFiltersV400.search)}" placeholder="Buscar clipero, seudónimo, titular o cuenta…"></label><label><span>Método</span><select id="payMethodV400"><option value="all">Todos</option>${methods.map(method=>`<option value="${esc(method)}" ${state.paymentFiltersV400.method===method?"selected":""}>${esc(method)}</option>`).join("")}</select></label><label><span>Ordenar</span><select id="paySortV400"><option value="pay_asc" ${state.paymentFiltersV400.sort==="pay_asc"?"selected":""}>Pago menor → mayor</option><option value="pay_desc" ${state.paymentFiltersV400.sort==="pay_desc"?"selected":""}>Pago mayor → menor</option><option value="name_asc" ${state.paymentFiltersV400.sort==="name_asc"?"selected":""}>Nombre A → Z</option><option value="name_desc" ${state.paymentFiltersV400.sort==="name_desc"?"selected":""}>Nombre Z → A</option></select></label></section>
+      <div id="paymentResultsMetaV400" class="filter-result-line"></div><section id="paymentResultsV400"></section>`;
+
+    const renderRows=()=>{
+      const f=state.paymentFiltersV400;
+      let rows=allRows.filter(row=>{
+        const hay=`${row.full} ${row.report.username||""} ${row.alias} ${row.method} ${row.account} ${row.holder}`.toLowerCase();
+        return (!f.search||hay.includes(f.search.toLowerCase()))&&(f.method==="all"||row.method===f.method);
+      });
+      rows.sort((a,b)=>f.sort==="pay_desc"?b.final-a.final:f.sort==="name_asc"?a.full.localeCompare(b.full,"es",{sensitivity:"base"}):f.sort==="name_desc"?b.full.localeCompare(a.full,"es",{sensitivity:"base"}):a.final-b.final||a.full.localeCompare(b.full,"es",{sensitivity:"base"}));
+      $("#paymentResultsMetaV400").innerHTML=`<span><b>${rows.length}</b> de ${allRows.length} personas</span><span>Orden: ${f.sort==="pay_asc"?"menor → mayor":f.sort==="pay_desc"?"mayor → menor":f.sort==="name_asc"?"A → Z":"Z → A"}</span>`;
+      $("#paymentResultsV400").innerHTML = rows.length ? `<div class="payment-table-v400"><table><thead><tr><th>Foto</th><th>Primer nombre</th><th>Seudónimo principal</th><th>Método</th><th>Cuenta de pago</th><th>Titular</th><th>Pago final</th><th>Acciones</th></tr></thead><tbody>${rows.map(row=>`<tr><td>${avatarMarkupV400({...row.profile,names:row.full},"sm")}</td><td><b>${esc(row.first)}</b><small>@${esc(row.report.username||"")}</small></td><td>${esc(row.alias)}</td><td><span class="pay-method-v400">${esc(row.method)}</span></td><td><span class="copy-field-v400">${esc(row.account||"Pendiente")}${row.account?`<button type="button" data-copy-v400="${esc(row.account)}" aria-label="Copiar cuenta">${uiIcon("copy",13)}</button>`:""}</span></td><td><span class="copy-field-v400">${esc(row.holder||"—")}${row.holder?`<button type="button" data-copy-v400="${esc(row.holder)}" aria-label="Copiar titular">${uiIcon("copy",13)}</button>`:""}</span></td><td><span class="pay-final-v400">${money(row.final)}</span></td><td><div class="payment-actions-v400"><button class="btn btn-secondary btn-sm" type="button" data-pay-detail-v400="${row.report.report_id}">Ver detalle</button><button class="btn btn-ghost btn-sm" type="button" data-copy-line-v400="${row.report.report_id}" title="Copiar pago">${uiIcon("copy",14)}</button></div></td></tr>`).join("")}</tbody></table></div><div class="payment-cards-v400">${rows.map(row=>`<article><div class="payment-card-head-v400">${avatarMarkupV400({...row.profile,names:row.full},"md")}<div><strong>${esc(row.full)}</strong><small>${esc(row.alias)}</small></div><span class="pay-method-v400">${esc(row.method)}</span></div><div class="payment-card-data-v400"><span><small>Cuenta</small><b>${esc(row.account||"Pendiente")}</b></span><span><small>Titular</small><b>${esc(row.holder||"—")}</b></span></div><div class="payment-card-total-v400"><span><small>PAGO FINAL</small><strong>${money(row.final)}</strong></span><button class="btn btn-secondary" data-pay-detail-v400="${row.report.report_id}" type="button">Ver detalle</button></div><div class="payment-card-copy-v400">${row.account?`<button type="button" data-copy-v400="${esc(row.account)}">Copiar cuenta</button>`:""}<button type="button" data-copy-line-v400="${row.report.report_id}">Copiar pago</button></div></article>`).join("")}</div>` : '<div class="empty card">No hay pagos con estos filtros.</div>';
+      $$('[data-copy-v400]').forEach(button=>button.addEventListener("click",()=>copyText(button.dataset.copyV400)));
+      $$('[data-copy-line-v400]').forEach(button=>button.addEventListener("click",()=>{const row=allRows.find(x=>String(x.report.report_id)===String(button.dataset.copyLineV400));if(row)copyText(`${row.method} · ${row.account||"Pendiente"} · ${row.holder||row.full} · ${money(row.final)}`);}));
+      $$('[data-pay-detail-v400]').forEach(button=>button.addEventListener("click",()=>{const row=allRows.find(x=>String(x.report.report_id)===String(button.dataset.payDetailV400));if(row)paymentDetailV400(row);}));
+    };
+    renderRows();
+    $("#paySearchV400")?.addEventListener("input",debounce(event=>{state.paymentFiltersV400.search=event.target.value.trim();setLocalV400("payment_filters",state.paymentFiltersV400);renderRows();},240));
+    $("#payMethodV400")?.addEventListener("change",event=>{state.paymentFiltersV400.method=event.target.value;setLocalV400("payment_filters",state.paymentFiltersV400);renderRows();});
+    $("#paySortV400")?.addEventListener("change",event=>{state.paymentFiltersV400.sort=event.target.value;setLocalV400("payment_filters",state.paymentFiltersV400);renderRows();});
+    $("#exportExcelV400")?.addEventListener("click",()=>exportPaymentsExcelV400(allRows,start));
+    $("#exportImageV400")?.addEventListener("click",()=>exportReportImageV400(allRows,start));
+    $("#exportPdfV400")?.addEventListener("click",()=>exportReportPdfV400(allRows,start));
+  }
+
+  function xmlSafeV400(value) {
+    return String(value??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&apos;");
+  }
+
+  function excelCellV400(value, style="sText", type=null) {
+    const resolvedType=type||(typeof value==="number"&&Number.isFinite(value)?"Number":"String");
+    return `<Cell ss:StyleID="${style}"><Data ss:Type="${resolvedType}">${resolvedType==="Number"?Number(value||0):xmlSafeV400(value)}</Data></Cell>`;
+  }
+
+  function excelSheetV400(name, rows, widths=[]) {
+    return `<Worksheet ss:Name="${xmlSafeV400(name)}"><Table>${widths.map(w=>`<Column ss:AutoFitWidth="0" ss:Width="${w}"/>`).join("")}${rows.map(row=>`<Row>${row.join("")}</Row>`).join("")}</Table><WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel"><FreezePanes/><FrozenNoSplit/><SplitHorizontal>1</SplitHorizontal><TopRowBottomPane>1</TopRowBottomPane><ProtectObjects>False</ProtectObjects><ProtectScenarios>False</ProtectScenarios></WorksheetOptions></Worksheet>`;
+  }
+
+  async function exportPaymentsExcelV400(rows, start) {
+    showLoading(true);
+    try {
+      const sorted=[...rows].sort((a,b)=>a.final-b.final||a.full.localeCompare(b.full,"es"));
+      const styles=`<Styles><Style ss:ID="Default" ss:Name="Normal"><Font ss:FontName="Calibri" ss:Size="10"/></Style><Style ss:ID="sHeader"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#17233C" ss:Pattern="Solid"/><Alignment ss:Vertical="Center" ss:WrapText="1"/></Style><Style ss:ID="sText"><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/></Borders><Alignment ss:Vertical="Center"/></Style><Style ss:ID="sMoney"><Font ss:Bold="1" ss:Color="#166534"/><Interior ss:Color="#ECFDF3" ss:Pattern="Solid"/><NumberFormat ss:Format='"S/" #,##0.00'/></Style><Style ss:ID="sNumber"><NumberFormat ss:Format="#,##0"/></Style><Style ss:ID="sWarn"><Font ss:Color="#B45309" ss:Bold="1"/><Interior ss:Color="#FFF7ED" ss:Pattern="Solid"/></Style></Styles>`;
+      const payments=[
+        ["Foto / referencia","Nombre","Seudónimo","Método","Cuenta","Titular","Pago final"].map(v=>excelCellV400(v,"sHeader")),
+        ...sorted.map(row=>[
+          excelCellV400(row.profile.avatar_url||`Iniciales ${row.full.split(/\s+/).slice(0,2).map(x=>x[0]?.toUpperCase()).join("")}`,"sText"),
+          excelCellV400(row.full,"sText"),
+          excelCellV400(row.alias,"sText"),
+          excelCellV400(row.method,"sText"),
+          excelCellV400(row.account||"Pendiente","sText"),
+          excelCellV400(row.holder||"—","sText"),
+          excelCellV400(row.final,"sMoney","Number")
+        ])
+      ];
+      const withPay=sorted.filter(r=>r.final>0).length;
+      const total=roundMoneyV360(sorted.reduce((sum,r)=>sum+r.final,0));
+      const summary=[
+        ["Indicador","Valor"].map(v=>excelCellV400(v,"sHeader")),
+        [excelCellV400("Personas"),excelCellV400(sorted.length,"sNumber","Number")],
+        [excelCellV400("Con pago"),excelCellV400(withPay,"sNumber","Number")],
+        [excelCellV400("Sin pago"),excelCellV400(sorted.length-withPay,"sNumber","Number")],
+        [excelCellV400("Total"),excelCellV400(total,"sMoney","Number")],
+        [excelCellV400("Período"),excelCellV400(periodRangeLabel({week_start:start}))],
+        [excelCellV400("Fecha de generación"),excelCellV400(dateTimeLabel(new Date().toISOString()))],
+      ];
+      const detail=[
+        ["Clipero","Pago calculado","Descuento","Pago final","Distribución administrativa"].map(v=>excelCellV400(v,"sHeader")),
+        ...sorted.map(row=>[excelCellV400(row.full),excelCellV400(row.calculated,"sMoney","Number"),excelCellV400(row.discount,"sMoney","Number"),excelCellV400(row.final,"sMoney","Number"),excelCellV400(row.isRecipient?"Receptor administrativo":row.discount?`${money(row.discount)} descontado + ${money(row.adminExtra)} adicional`:"No aplica")])
+      ];
+      const workbook=`<?xml version="1.0"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet" xmlns:x="urn:schemas-microsoft-com:office:excel">${styles}${excelSheetV400("PAGOS",payments,[115,150,125,90,125,160,95])}${excelSheetV400("RESUMEN",summary,[160,180])}${excelSheetV400("DETALLE INTERNO",detail,[170,105,95,105,220])}</Workbook>`;
+      const blob=new Blob(["\ufeff",workbook],{type:"application/vnd.ms-excel"});
+      const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=`ClipControl_${String(start).replace(/[^\d-]/g,"")}_pagos.xls`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);toast("Excel de pagos exportado","success");
+    } catch(error){console.error(error);toast(`No se pudo exportar Excel: ${errorMessage(error)}`,"error");}
+    finally{showLoading(false);}
+  }
+
+  function visualRowsMarkupV400(rows) {
+    return rows.map(row=>`<tr><td><div class="export-person-v400">${avatarMarkupV400({...row.profile,names:row.full},"sm")}<b>${esc(row.first)}</b></div></td><td>${esc(row.alias)}</td><td><span>${esc(row.method)}</span></td><td>${esc(row.account||"Pendiente")}</td><td>${esc(row.holder||"—")}</td><td class="export-pay-v400">${money(row.final)}</td></tr>`).join("");
+  }
+
+  function visualReportMarkupV400(rows, start, compact=false, summaryRows=null) {
+    const sorted=[...rows].sort((a,b)=>a.final-b.final||a.full.localeCompare(b.full,"es"));
+    const summary=[...(summaryRows||rows)];
+    const withPay=summary.filter(r=>r.final>0).length;
+    const total=roundMoneyV360(summary.reduce((sum,r)=>sum+r.final,0));
+    return `<div class="export-report-v400 ${compact?"pdf-page-v400":""}"><header><div><span>CLIPCONTROL</span><h1>PAGOS ACTUALIZADOS · TODOS LOS CLIPEROS</h1><p>Pago final por persona · ${esc(periodRangeLabel({week_start:start}))}</p></div><b>${money(total)}</b></header><section class="export-kpis-v400"><div><small>PERSONAS</small><strong>${summary.length}</strong></div><div><small>CON PAGO</small><strong>${withPay}</strong></div><div><small>CON S/0</small><strong>${summary.length-withPay}</strong></div><div><small>TOTAL GENERAL</small><strong>${money(total)}</strong></div></section><div class="export-table-v400"><table><thead><tr><th>PRIMER NOMBRE</th><th>SEUDÓNIMO</th><th>MÉTODO</th><th>CUENTA DE PAGO</th><th>TITULAR</th><th>PAGO FINAL</th></tr></thead><tbody>${visualRowsMarkupV400(sorted)||'<tr><td colspan="6">Sin registros.</td></tr>'}</tbody></table></div><footer>Generado por ClipControl · ${esc(dateTimeLabel(new Date().toISOString()))}</footer></div>`;
+  }
+
+  async function captureVisualV400(markup) {
+    await ensureExportLibsV370();
+    const host=document.createElement("div");host.className="export-host-v400";host.innerHTML=markup;document.body.appendChild(host);
+    const target=host.firstElementChild;
+    const imgs=[...target.querySelectorAll("img")];
+    await Promise.all(imgs.map(img=>img.complete?Promise.resolve():new Promise(resolve=>{img.onload=resolve;img.onerror=()=>{img.remove();resolve();};})));
+    const canvas=await window.html2canvas(target,{scale:2,backgroundColor:"#f4f6fb",useCORS:true,logging:false});
+    host.remove();return canvas;
+  }
+
+  async function exportReportImageV400(rows,start) {
+    showLoading(true);
+    try {const canvas=await captureVisualV400(visualReportMarkupV400(rows,start,false));canvas.toBlob(blob=>{if(!blob)return toast("No se pudo generar la imagen.","error");const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=`ClipControl_${String(start).replace(/[^\d-]/g,"")}_pagos.png`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);toast("Imagen exportada","success");},"image/png");}
+    catch(error){console.error(error);toast(`No se pudo generar la imagen: ${errorMessage(error)}`,"error");}
+    finally{showLoading(false);}
+  }
+
+  async function exportReportPdfV400(rows,start) {
+    showLoading(true);
+    try {
+      await ensureExportLibsV370();
+      const {jsPDF}=window.jspdf;
+      const sorted=[...rows].sort((a,b)=>a.final-b.final||a.full.localeCompare(b.full,"es"));
+      const chunks=[];for(let i=0;i<sorted.length;i+=13)chunks.push(sorted.slice(i,i+13));if(!chunks.length)chunks.push([]);
+      const doc=new jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
+      for(let i=0;i<chunks.length;i++){
+        if(i>0)doc.addPage("a4","landscape");
+        const canvas=await captureVisualV400(visualReportMarkupV400(chunks[i],start,true,sorted));
+        const margin=7,pageW=297-margin*2,pageH=210-margin*2,ratio=Math.min(pageW/canvas.width,pageH/canvas.height),w=canvas.width*ratio,h=canvas.height*ratio;
+        doc.addImage(canvas.toDataURL("image/png"),"PNG",margin,(210-h)/2,w,h,"FAST");
+      }
+      doc.save(`ClipControl_${String(start).replace(/[^\d-]/g,"")}_pagos.pdf`);toast("PDF multipágina exportado","success");
+    } catch(error){console.error(error);toast(`No se pudo generar el PDF: ${errorMessage(error)}`,"error");}
+    finally{showLoading(false);}
+  }
+
+  function clipperFinalPaymentV400(basePay, summary, settings) {
+    const amount=roundMoneyV360(basePay);
+    const cfg=settings||{};
+    const isRecipient=String(cfg.recipient_user_id||"")===String(state.profile?.id||"");
+    const sent=summary?.status&&summary.status!=="draft";
+    if(cfg.enabled!==false&&cfg.recipient_user_id&&!isRecipient&&sent&&amount>0){
+      return roundMoneyV360(Math.max(0,amount-Math.max(0,Number(cfg.minimum_contribution??30))));
+    }
+    return amount;
+  }
+
+  function clipperAccountProgressV400(rows=[]) {
+    if(!rows.length)return '<div class="empty">Aún no hay cuentas con videos en este período.</div>';
+    return `<div class="clipper-account-grid-v400">${rows.map(row=>{const target=Math.max(1,Number(row.qualification_views||250000)),bonus=Math.max(target,Number(row.bonus_views||700000)),views=Number(row.views||0),pct=clamp((views/bonus)*100,0,100),metaPct=clamp((target/bonus)*100,0,100),status=row.bonus_qualified?"BONO ALCANZADO":row.base_qualified?"META ALCANZADA":"EN PROGRESO";return `<article><div class="account-card-head-v400">${platformBadge(row.platform,true)}<span>${status}</span></div><h3>${esc(row.account_name||platformLabel(row.platform))}</h3><div class="account-card-metrics-v400"><div><strong>${num(views)}</strong><small>vistas</small></div><div><strong>${money(row.final_pay)}</strong><small>pago</small></div></div><div class="goal-track-v400"><span style="width:${pct}%"></span><i style="left:${metaPct}%"></i></div><div class="goal-labels-v400"><span>Meta ${num(target)}</span><span>Bono ${num(bonus)}</span></div></article>`;}).join("")}</div>`;
+  }
+
+  async function renderClipperDashboardV400() {
+    const s=state.currentSummary;
+    const [accountPayments,distributionSettings]=await Promise.all([fetchAccountPaymentsV280(state.currentReportId),fetchPaymentDistributionSettingsV360().catch(()=>({enabled:false}))]);
+    const calculated=roundMoneyV360(accountPayments.reduce((sum,row)=>sum+Number(row.final_pay||0),0)+Number(s?.bonus_pay||0));
+    const finalPay=clipperFinalPaymentV400(calculated,s,distributionSettings);
+    const editable=reportEditable(s)&&clipperUploadEnabledV320();
+    const totalViews=state.videos.reduce((sum,v)=>sum+Number(v.views||0),0);
+    const top=[...state.videos].sort((a,b)=>Number(b.views||0)-Number(a.views||0)).slice(0,3);
+    setHeader("Inicio",periodRangeLabel(s));
+    $("#content").innerHTML=`${avatarReminderMarkupV370()}${clipperAccessPaymentMarkupV320()}
+      <section class="clipper-hero-v400"><div class="clipper-identity-v400">${avatarMarkupV400(state.profile,"lg")}<div><span class="section-eyebrow">PERÍODO ACTIVO</span><h2>Hola, ${esc(state.profile.names||state.profile.username)}</h2><p>@${esc(state.profile.username||"")} · ${esc(periodRangeLabel(s))}</p></div></div><div class="clipper-final-pay-v400"><small>PAGO FINAL</small><strong>${money(finalPay)}</strong><span>${STATUS_LABELS[s?.status]||"En elaboración"}</span></div></section>
+      <section class="clipper-kpis-v400"><article><strong>${state.videos.length}</strong><span>VIDEOS</span></article><article><strong>${num(totalViews)}</strong><span>VISTAS</span></article><article><strong>${activeAccounts().length}</strong><span>CUENTAS</span></article></section>
+      <section class="clipper-actions-v400"><button id="quickAddBtn" class="primary" ${!editable?"disabled":""}>${uiIcon("plus",18)}<span>Agregar video</span></button><button data-clipper-action-v400="networks">${uiIcon("network",18)}<span>Mis cuentas</span></button><button data-clipper-action-v400="history">${uiIcon("history",18)}<span>Historial</span></button><button id="refreshMyMetricsBtn">${uiIcon("sync",18)}<span>Actualizar métricas</span></button></section>
+      <section class="card clipper-progress-v400"><div class="section-title-row"><div><span class="section-eyebrow">PROGRESO DE CUENTAS</span><h3>Tu avance hacia meta y bono</h3></div><button class="btn btn-ghost btn-sm" data-clipper-action-v400="networks">Administrar cuentas</button></div>${clipperAccountProgressV400(accountPayments)}</section>
+      <section class="card clipper-top-v400"><div class="section-title-row"><div><span class="section-eyebrow">MEJORES VIDEOS</span><h3>Top del período</h3></div><button class="btn btn-ghost btn-sm" data-clipper-action-v400="videos">Ver todos</button></div><div class="clipper-top-list-v400">${top.map((v,i)=>`<a href="${esc(v.video_url)}" target="_blank" rel="noopener"><b>${i+1}</b><span>${platformLogo(v.platform)}</span><div><strong>${esc(v.external_title||`Video ${v.position||""}`)}</strong><small>${num(v.views||0)} vistas</small></div>${uiIcon("arrow",14)}</a>`).join("")||'<div class="empty">Agrega tu primer video para ver el ranking.</div>'}</div></section>`;
+    $("#quickAddBtn")?.addEventListener("click",handleQuickRegisterAction);
+    bindClipperAccessPaymentActionsV320($("#content"));
+    $("#avatarReminderBtnV370")?.addEventListener("click",()=>navigate("profile"));
+    $$('[data-clipper-action-v400]').forEach(button=>button.addEventListener("click",()=>navigate(button.dataset.clipperActionV400)));
+    $("#refreshMyMetricsBtn")?.addEventListener("click",async()=>{showLoading(true);try{await runLiveMetricSync(false);await loadClipperCurrentData();await renderClipperDashboardV400();}finally{showLoading(false);}});
+    animateDynamicNumbers($("#content"));
+  }
+
+  async function renderClipperHistory() {
+    setHeader("Historial", "Tus períodos anteriores");
+    const [reports,distributionSettings]=await Promise.all([
+      query(state.supabase.from("weekly_report_summary").select("*").eq("user_id",state.profile.id).order("week_start",{ascending:false})),
+      fetchPaymentDistributionSettingsV360().catch(()=>({enabled:false})),
+    ]);
+    const cards=reports.map(r=>{const raw=Number(r.total_pay??r.approved_base_pay??r.calculated_base_pay??0);const final=clipperFinalPaymentV400(raw,r,distributionSettings);return `<article class="history-card-v400"><div><span>${esc(periodRangeLabel(r))}</span>${statusBadge(r.status)}</div><section><p><small>VIDEOS</small><b>${num(r.video_count||0)}</b></p><p><small>VISTAS</small><b>${num(r.total_views||0)}</b></p><p class="money"><small>PAGO FINAL</small><b>${money(final)}</b></p></section><button class="btn btn-secondary" data-history-report="${r.report_id}">Ver período</button></article>`;}).join("");
+    $("#content").innerHTML=`<section class="history-grid-v400">${cards||'<div class="empty card">No existen reportes anteriores.</div>'}</section>`;
+    $$('[data-history-report]').forEach(button=>button.addEventListener("click",()=>openReportDetail(button.dataset.historyReport,false)));
+  }
+
+  function profileCompletionV400(profile={}) {
+    const checks=[
+      ["Nombre",Boolean(profile.names&&profile.surnames)],
+      ["Pago",Boolean(profile.payment_method&&profile.payment_account&&profile.payment_holder)],
+      ["TikTok / cuenta principal",Boolean(profile.primary_social_url)],
+      ["Foto",Boolean(profile.avatar_url)],
+    ];
+    const done=checks.filter(x=>x[1]).length;
+    return {checks,percent:Math.round((done/checks.length)*100)};
+  }
+
+  async function uploadMyAvatar(file) {
+    if(!file)return;
+    if(!/^image\/(jpeg|png|webp)$/i.test(file.type||""))return toast("Usa una imagen JPG, PNG o WEBP.","error");
+    if(file.size>5*1024*1024)return toast("La foto debe pesar máximo 5 MB.","error");
+    showLoading(true);
+    try{const path=`${state.profile.id}/avatar`;const{error:uploadError}=await state.supabase.storage.from("profile-avatars").upload(path,file,{upsert:true,contentType:file.type,cacheControl:"3600"});if(uploadError)throw uploadError;const{data}=state.supabase.storage.from("profile-avatars").getPublicUrl(path);const publicUrl=`${data.publicUrl}?v=${Date.now()}`;await query(state.supabase.rpc("update_my_avatar_url",{p_avatar_url:publicUrl}));state.profile.avatar_url=publicUrl;showApp();toast("Foto actualizada","success");await renderPage(true);}catch(error){toast(errorMessage(error),"error");}finally{showLoading(false);}
+  }
+
+  function renderProfilePage() {
+    setHeader("Perfil", "Identidad y datos de pago");
+    const p=state.profile, completion=profileCompletionV400(p);
+    $("#content").innerHTML=`<section class="profile-v400-head card"><div class="profile-v400-photo"><div id="avatarPreviewV400">${avatarMarkupV400(p,"xl")}</div><div><h2>${esc(`${p.names||""} ${p.surnames||""}`.trim()||p.username)}</h2><p>@${esc(p.username||"")}</p><div class="profile-photo-actions-v400"><label class="btn btn-secondary" for="avatarFileV400">${uiIcon("user",15)} ${p.avatar_url?"Cambiar foto":"Subir foto"}</label><input id="avatarFileV400" hidden type="file" accept="image/jpeg,image/png,image/webp">${p.avatar_url?'<button id="removeAvatarBtnV400" class="btn btn-ghost" type="button">Eliminar foto</button>':""}<button id="saveAvatarBtnV400" class="btn btn-primary hidden" type="button">Guardar foto</button><button id="cancelAvatarBtnV400" class="btn btn-ghost hidden" type="button">Cancelar</button></div><small>JPG, PNG o WEBP · máximo 5 MB</small></div></div><div class="profile-complete-v400"><div><small>PERFIL COMPLETO</small><strong>${completion.percent}%</strong></div><div class="progress-v400"><span style="width:${completion.percent}%"></span></div>${completion.checks.map(([label,ok])=>`<span class="${ok?"ok":"missing"}">${ok?"✓":"✕"} ${esc(label)}</span>`).join("")}</div></section>
+      <div class="grid grid2 profile-grid-v400"><section class="card"><div class="card-head"><div><h2>Información personal</h2><p>Datos visibles para administración.</p></div></div><form id="profileForm" class="form-grid compact-form"><label>Nombres<input name="names" required value="${esc(p.names||"")}"></label><label>Apellidos<input name="surnames" required value="${esc(p.surnames||"")}"></label><label>WhatsApp<input name="phone" required value="${esc(p.phone||"")}"></label><label>Cuenta principal<input name="primary_social_url" required type="url" value="${esc(p.primary_social_url||"")}" placeholder="https://www.tiktok.com/@usuario"></label><div class="full actions"><button class="btn btn-primary">Guardar cambios</button></div></form></section><section class="card"><div class="card-head"><div><h2>Datos de pago</h2><p>Se usan solo para procesar tu pago.</p></div><span class="pill ${p.payment_account?"pill-green":"pill-yellow"}">${p.payment_account?"Completo":"Pendiente"}</span></div><form id="paymentProfileForm" class="form-grid compact-form"><label>Método<select name="payment_method">${paymentMethodOptions(p.payment_method||"")}</select></label><label>Cuenta / número<input name="payment_account" value="${esc(p.payment_account||"")}" placeholder="Yape, Plin, cuenta o CCI"></label><label class="full">Titular<input name="payment_holder" value="${esc(p.payment_holder||`${p.names||""} ${p.surnames||""}`.trim())}"></label><div class="full actions"><button class="btn btn-primary">Guardar datos de pago</button></div></form></section></div>`;
+    let pending=null,pendingUrl=null;
+    const fileInput=$("#avatarFileV400"),save=$("#saveAvatarBtnV400"),cancel=$("#cancelAvatarBtnV400"),preview=$("#avatarPreviewV400");
+    fileInput?.addEventListener("change",event=>{const file=event.target.files?.[0];if(!file)return;if(!/^image\/(jpeg|png|webp)$/i.test(file.type||"")||file.size>5*1024*1024){toast(file.size>5*1024*1024?"La foto debe pesar máximo 5 MB.":"Usa JPG, PNG o WEBP.","error");event.target.value="";return;}pending=file;if(pendingUrl)URL.revokeObjectURL(pendingUrl);pendingUrl=URL.createObjectURL(file);preview.innerHTML=`<span class="avatar-v400 avatar-v400-xl"><img src="${pendingUrl}" alt="Vista previa"><span></span></span>`;save.classList.remove("hidden");cancel.classList.remove("hidden");});
+    save?.addEventListener("click",()=>pending&&uploadMyAvatar(pending));
+    cancel?.addEventListener("click",()=>{pending=null;if(pendingUrl)URL.revokeObjectURL(pendingUrl);pendingUrl=null;fileInput.value="";preview.innerHTML=avatarMarkupV400(p,"xl");save.classList.add("hidden");cancel.classList.add("hidden");});
+    $("#removeAvatarBtnV400")?.addEventListener("click",removeMyAvatar);
+    $("#profileForm")?.addEventListener("submit",saveOwnProfile);
+    $("#paymentProfileForm")?.addEventListener("submit",async event=>{event.preventDefault();const f=Object.fromEntries(new FormData(event.target));await saveProfileV20({names:p.names,surnames:p.surnames,phone:p.phone,primary_social_url:p.primary_social_url,...f});});
+  }
+
+  async function renderAdminSettings() {
+    await renderAdminSettingsV280Base();
+    const pane=$("[data-settings-pane='payments']");
+    if(!pane)return;
+    const [config,users]=await Promise.all([fetchPaymentDistributionSettingsV360(),query(state.supabase.from("admin_clipper_overview").select("user_id,role,active,username,names,surnames").eq("role","clipper").order("username")).catch(()=>[])]);
+    const card=document.createElement("div");card.className="card distribution-settings-v400";
+    card.innerHTML=`<div class="card-head"><div><span class="section-eyebrow">DISTRIBUCIÓN ADMINISTRATIVA</span><h2>Distribución de pagos</h2><p>Cada reporte válido genera S/30 de descuento y S/30 de aporte adicional para administración.</p></div><span class="pill ${config.enabled!==false?"pill-green":"pill-yellow"}">${config.enabled!==false?"ACTIVADA":"DESACTIVADA"}</span></div>${config.setup_missing?`<div class="alert alert-warning"><div>⚠️</div><div><strong>Configuración no instalada</strong><p>Falta la tabla payment_distribution_settings.</p></div></div>`:`<form id="distributionSettingsFormV400" class="form-grid compact-form"><label class="full checkbox-label"><input name="enabled" type="checkbox" ${config.enabled!==false?"checked":""}> Distribución administrativa activa</label><label class="full">Administrador receptor<select name="recipient_user_id" required><option value="">Seleccionar…</option>${users.filter(u=>u.active!==false).map(u=>`<option value="${u.user_id}" ${String(u.user_id)===String(config.recipient_user_id||"")?"selected":""}>${esc(`${u.names||u.username||""} ${u.surnames||""}`.trim())} · @${esc(u.username||"")}</option>`).join("")}</select></label><div><span class="field-label-v400">Descuento</span><strong class="fixed-money-v400">S/30</strong></div><div><span class="field-label-v400">Adicional</span><strong class="fixed-money-v400">S/30</strong></div><div class="full actions"><button class="btn btn-primary">Guardar distribución</button></div></form>`}`;
+    pane.appendChild(card);
+    $("#distributionSettingsFormV400")?.addEventListener("submit",async event=>{event.preventDefault();const f=Object.fromEntries(new FormData(event.target));if(!f.recipient_user_id)return toast("Selecciona un administrador receptor.","error");showLoading(true);try{await query(state.supabase.from("payment_distribution_settings").update({enabled:f.enabled==="on",minimum_contribution:30}).eq("id",1));await savePaymentDistributionRecipientV360(f.recipient_user_id);toast("Distribución actualizada","success");await renderAdminSettings();}catch(error){toast(errorMessage(error),"error");}finally{showLoading(false);}});
+  }
+
+  async function renderAdminPage() {
+    if(state.page==="dashboard")return renderAdminDashboardV400();
+    if(state.page==="reports")return renderAdminReportsV300();
+    if(state.page==="videos")return renderAdminVideoCenterV300();
+    if(state.page==="metrics")return renderMetricInboxV300();
+    if(state.page==="channel")return renderPublicYoutube();
+    if(state.page==="clippers")return state.selectedClipperId?renderClipperAdminDetail():renderAdminClippersV400();
+    if(state.page==="payments")return renderAdminPaymentsV400();
+    if(state.page==="announcements")return renderAdminAnnouncements();
+    if(state.page==="settings")return renderAdminSettings();
+    state.page="dashboard";return renderAdminDashboardV400();
+  }
+
+  async function renderClipperPage() {
+    if(["dashboard","videos","networks","channel"].includes(state.page))await loadClipperCurrentData();
+    if(state.page==="dashboard")return renderClipperDashboardV400();
+    if(state.page==="videos")return renderClipperVideosV400();
+    if(state.page==="channel")return renderPublicYoutube();
+    if(state.page==="networks")return renderNetworks();
+    if(state.page==="history")return renderClipperHistory();
+    if(state.page==="profile")return renderProfilePage();
+    state.page="dashboard";return renderClipperDashboardV400();
+  }
+
+  async function renderAdminReports() { return renderAdminReportsV300(); }
+  function renderClipperDashboard() { return renderClipperDashboardV400(); }
+  function renderClipperVideos() { return renderClipperVideosV400(); }
+  async function renderAdminPayments() { return renderAdminPaymentsV400(); }
+
+  function initV400UiShell() {
+    ensureV400Shell();
+    window.addEventListener("online",updateConnectivityV400);
+    window.addEventListener("offline",updateConnectivityV400);
+    window.addEventListener("scroll",()=>{const back=$("#backTopV400");if(back)back.classList.toggle("show",window.innerWidth<=680&&window.scrollY>520);},{passive:true});
+    document.addEventListener("keydown",event=>{
+      if(event.key==="Escape"&&$("#modalLayer")?.children.length){event.preventDefault();closeModal();return;}
+      if(!isAdminV400())return;
+      const tag=String(document.activeElement?.tagName||"").toLowerCase();
+      const typing=["input","textarea","select"].includes(tag)||document.activeElement?.isContentEditable;
+      if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==="k"){event.preventDefault();openGlobalSearchV400();return;}
+      if(!typing&&event.key==="/"){event.preventDefault();openGlobalSearchV400();}
+    });
+    if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=4.0.0").catch(()=>null),{once:true});}
+  }
+  window.addEventListener("DOMContentLoaded",initV400UiShell);
+
 
   // Herramientas de diagnóstico solo cuando debug=true en supabase-config.js.
   if (window.CLIPCONTROL_SUPABASE?.debug === true) {
