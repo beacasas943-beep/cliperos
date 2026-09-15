@@ -1,4 +1,4 @@
-const CACHE_NAME = "clipcontrol-static-v410";
+const CACHE_NAME = "clipcontrol-static-v420";
 const STATIC_ASSETS = [
   "./",
   "./index.html",

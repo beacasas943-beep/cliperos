@@ -1,7 +1,7 @@
 (() => {
-  const CLIPCONTROL_FRONTEND_VERSION = "4.1.0-ideas-ux";
+  const CLIPCONTROL_FRONTEND_VERSION = "4.2.0-professional-responsive";
   window.CLIPCONTROL_FRONTEND_VERSION = CLIPCONTROL_FRONTEND_VERSION;
-  document.documentElement.dataset.clipcontrolUi = "4.1.0-ideas-ux";
+  document.documentElement.dataset.clipcontrolUi = "4.2.0-professional-responsive";
   "use strict";
 
   const PLATFORMS = {
@@ -4100,6 +4100,7 @@
 
   function errorMessage(error) {
     const msg=error?.message||String(error||"Error inesperado");
+    if(/support_tickets|support_ticket_messages|clipcontrol_create_support_ticket_v420|clipcontrol_send_support_message_v420|admin_update_support_ticket_v420|clipcontrol_leaderboard_v420|clipcontrol_my_final_payment_v420|admin_update_branding_v420/i.test(msg))return "Falta ejecutar el SQL 4.2 de ClipControl en Supabase.";
     if(/metrics_live_enabled|metrics_live_interval_minutes|metrics_live_batch_size|realtime_ui_enabled|sync_my_due_metrics/i.test(msg))return "Falta instalar la actualización SQL/Edge Function de ClipControl 2.2 LIVE.";
     if(/announcements|announcement_receipts|my_visible_announcements|announcement_admin_summary|period_report_snapshots|last_login_at|last_seen_at|login_count|record_my_login|touch_my_presence|rollover_periods_if_due|freeze_period_metrics|admin_close_active_period|admin_reopen_period/i.test(msg))return "Falta ejecutar el SQL 18 de ClipControl 2.1 en Supabase.";
     if(/weekly_report_platform_summary|reporting_periods|platform_payment_rules|update_my_profile_v20|admin_set_active_period|admin_save_platform_payment_rule/i.test(msg))return "Falta ejecutar el SQL 16 de ClipControl 2.0 en Supabase.";
@@ -5627,6 +5628,7 @@
 
   function errorMessage(error) {
     const msg=error?.message||String(error||"Error inesperado");
+    if(/support_tickets|support_ticket_messages|clipcontrol_create_support_ticket_v420|clipcontrol_send_support_message_v420|admin_update_support_ticket_v420|clipcontrol_leaderboard_v420|clipcontrol_my_final_payment_v420|admin_update_branding_v420/i.test(msg))return "Falta ejecutar el SQL 4.2 de ClipControl en Supabase.";
     if(/payment_distribution_settings|admin_set_payment_distribution_recipient_v360/i.test(msg))return "Falta ejecutar SQL 32 de distribución de aportes en Supabase.";
     if(/ACCESS_PAYMENT_REQUIRED|clipper_access_fees|clipper_access_payment_settings|clipcontrol-payment-qr|clipcontrol-payment-proofs|access_fee|access_payment|v320/i.test(msg))return "El acceso para subir clips está bloqueado por el control de pago o falta ejecutar SQL 31 de ClipControl 3.2.";
     if(/v280|payment_cap_settings_v280|clipper_payment_cap_overrides_v280|clipcontrol_account_payments_v280|clipcontrol_motivation_v280/i.test(msg))return "Falta ejecutar el SQL 28 de ClipControl 2.8.0 en Supabase.";
@@ -7307,7 +7309,7 @@
       <section class="kpi-grid-v400"><article><small>CLIPEROS ACTIVOS</small><strong>${activeClippers.length||reports.length}</strong><span>cliperos</span></article><article><small>REPORTES RECIBIDOS</small><strong>${reportsReceived}/${Math.max(activeClippers.length,reports.length)}</strong><span>del período</span></article><article><small>VIDEOS</small><strong>${num((data.videos||[]).length)}</strong><span>registrados</span></article><article class="money"><small>PAGO PROYECTADO</small><strong>${money(projected)}</strong><span>pago final total</span></article></section>
       <section class="card dashboard-reports-v410"><div class="section-title-row"><div><span class="section-eyebrow">REPORTES</span><h3>Estado del equipo</h3></div><button class="btn btn-ghost btn-sm" data-dashboard-go-v410="reports">Ver todos</button></div>${adminReportsTable(reports.slice(0,12))}</section>
       <section class="card top-videos-v410"><div class="section-title-row"><div><span class="section-eyebrow">TOP 6 DEL PERÍODO</span><h3>Contenido con más vistas</h3></div><button class="btn btn-ghost btn-sm" data-dashboard-go-v410="videos">Ver ranking completo</button></div><div class="top-video-grid-v410">${topVideos.map((v,i)=>`<a href="${esc(v.video_url)}" target="_blank" rel="noopener"><div class="top-video-preview-v410">${topVideoPreviewV410(v)}<b>${i+1}</b></div><div class="top-video-copy-v410"><strong>${esc(v.account_name||v.clipper_name||platformLabel(v.platform))}</strong><small>${esc(v.clipper_name||platformLabel(v.platform))}</small><em>${num(v.views||0)} vistas</em></div></a>`).join("")||'<div class="empty">Todavía no hay videos.</div>'}</div></section>
-      <section class="quick-actions-v400"><button data-quick-v410="search">${uiIcon("search",17)}<span>Buscar clipero</span></button><button data-quick-v410="ideas">${uiIcon("megaphone",17)}<span>Ver ideas</span></button><button data-quick-v410="payments">${uiIcon("wallet",17)}<span>Ir a pagos</span></button><button data-quick-v410="metrics">${uiIcon("sync",17)}<span>Actualizar métricas</span></button></section>`;
+      <section class="quick-actions-v400 quick-actions-v420"><button data-quick-v410="search">${uiIcon("search",17)}<span>Buscar clipero</span></button><button data-quick-v410="ideas">${uiIcon("megaphone",17)}<span>Ver ideas</span></button><button data-quick-v410="support">${uiIcon("shield",17)}<span>Soporte</span></button><button data-quick-v410="payments">${uiIcon("wallet",17)}<span>Ir a pagos</span></button><button data-quick-v410="metrics">${uiIcon("sync",17)}<span>Actualizar métricas</span></button></section>`;
     $("#dashboardPeriodV400")?.addEventListener("change",event=>{state.adminWeek=event.target.value;state.adminVideoData=null;renderAdminDashboardV400();});
     $$('[data-dashboard-go-v410]').forEach(b=>b.addEventListener("click",()=>navigate(b.dataset.dashboardGoV410)));
     $$('[data-quick-v410]').forEach(button=>button.addEventListener("click",()=>{const action=button.dataset.quickV410;if(action==="search")openGlobalSearchV400();else navigate(action);}));
@@ -7451,6 +7453,380 @@
   window.addEventListener("DOMContentLoaded",migrateThemeV410);
 
 
+  // ========================================================================
+  // ClipControl 4.2 · PROFESSIONAL RESPONSIVE REDESIGN
+  // UI adaptable + pago final unificado + soporte + ranking + branding.
+  // Esta capa NO modifica bright-processor ni el motor de métricas.
+  // ========================================================================
+
+  const SUPPORT_STATUS_V420 = {
+    open: "Abierto",
+    reviewing: "En revisión",
+    waiting_user: "Esperando respuesta",
+    resolved: "Resuelto",
+    closed: "Cerrado",
+  };
+  const SUPPORT_CATEGORY_V420 = {
+    technical: "Problema técnico",
+    payment: "Pago",
+    metrics: "Métricas / videos",
+    account: "Cuenta / perfil",
+    ideas: "Ideas",
+    other: "Otra consulta",
+  };
+
+  function applyBrandingV420() {
+    const settings = state.settings || {};
+    const brand = String(settings.brand_name || "ClipControl").trim() || "ClipControl";
+    const tagline = String(settings.brand_tagline || "Creator Control").trim() || "Creator Control";
+    const logo = String(settings.brand_logo_url || "").trim();
+    const sideStrong = document.querySelector(".side-brand strong");
+    if (sideStrong) sideStrong.textContent = brand;
+    const loginStrong = document.querySelector(".login-logo>div>strong");
+    const loginTagline = document.querySelector(".login-logo>div>span");
+    if (loginStrong) loginStrong.textContent = brand;
+    if (loginTagline) loginTagline.textContent = tagline;
+    document.title = `${brand} · ${tagline}`;
+    if (logo) {
+      $$(".side-brand .cc-logo img,.login-logo .cc-logo img").forEach(img => { img.src = logo; img.referrerPolicy = "no-referrer"; });
+    }
+    document.documentElement.dataset.brandV420 = brand;
+  }
+
+  function closeSidebarV420() {
+    $("#sidebar")?.classList.remove("open");
+    $("#sidebarScrimV420")?.classList.remove("show");
+    document.body.classList.remove("drawer-open-v420");
+  }
+
+  function openSidebarV420() {
+    if (window.innerWidth > 1180) return;
+    $("#sidebar")?.classList.add("open");
+    $("#sidebarScrimV420")?.classList.add("show");
+    document.body.classList.add("drawer-open-v420");
+  }
+
+  function ensureResponsiveShellV420() {
+    if (!$("#sidebarScrimV420")) {
+      const scrim = document.createElement("button");
+      scrim.id = "sidebarScrimV420";
+      scrim.className = "sidebar-scrim-v420";
+      scrim.type = "button";
+      scrim.setAttribute("aria-label", "Cerrar menú");
+      document.body.appendChild(scrim);
+      scrim.addEventListener("click", closeSidebarV420);
+    }
+    const menu = $("#menuBtn");
+    if (menu) menu.setAttribute("aria-controls", "sidebar");
+  }
+
+  async function refreshNavBadgesV420() {
+    if (!state.profile || !state.supabase) return;
+    try {
+      const admin = isAdminV400();
+      let ticketQuery = state.supabase.from("support_tickets").select("id,status").in("status", ["open","reviewing","waiting_user"]);
+      if (!admin) ticketQuery = ticketQuery.eq("user_id", state.profile.id);
+      const tickets = await query(ticketQuery).catch(() => []);
+      let ideas = [];
+      if (admin) ideas = await query(state.supabase.from("clipper_suggestions").select("id").eq("status","new").limit(99)).catch(() => []);
+      const setBadge = (selector, count) => {
+        $$(selector).forEach(btn => {
+          btn.querySelector(".nav-count-v420")?.remove();
+          if (count > 0) btn.insertAdjacentHTML("beforeend", `<b class="nav-count-v420">${Math.min(count,99)}</b>`);
+        });
+      };
+      setBadge('[data-page="support"],[data-mobile-page="support"]', tickets.length);
+      if (admin) setBadge('[data-page="ideas"]', ideas.length);
+    } catch (_) {}
+  }
+
+  function buildNav() {
+    if (!state.profile) return;
+    ensureV400Shell();
+    ensureResponsiveShellV420();
+    applyBrandingV420();
+    const admin = isAdminV400(), nav = $("#nav");
+    if (nav) {
+      nav.innerHTML = admin ? `
+        <div class="nav-group-v400"><span>OPERACIÓN</span>
+          ${navButtonV400("dashboard","home","Inicio")}
+          ${navButtonV400("reports","report","Reportes")}
+          ${navButtonV400("videos","video","Videos")}
+          ${navButtonV400("metrics","activity","Métricas")}
+        </div>
+        <div class="nav-group-v400"><span>GESTIÓN</span>
+          ${navButtonV400("clippers","users","Cliperos")}
+          ${navButtonV400("payments","wallet","Pagos")}
+          ${navButtonV400("ideas","megaphone","Ideas")}
+          ${navButtonV400("support","shield","Soporte")}
+          ${navButtonV400("announcements","megaphone","Comunicados")}
+        </div>
+        <div class="nav-group-v400"><span>SISTEMA</span>
+          ${navButtonV400("profile","user","Mi perfil")}
+          ${navButtonV400("settings","settings","Ajustes")}
+        </div>` : `
+        <div class="nav-group-v400"><span>PRINCIPAL</span>
+          ${navButtonV400("dashboard","home","Inicio")}
+          ${navButtonV400("videos","video","Videos")}
+          ${navButtonV400("networks","network","Mis cuentas")}
+          ${navButtonV400("ideas","megaphone","Ideas")}
+          ${navButtonV400("history","history","Historial")}
+        </div>
+        <div class="nav-group-v400"><span>AYUDA Y CUENTA</span>
+          ${navButtonV400("support","shield","Soporte")}
+          ${navButtonV400("profile","user","Perfil")}
+          <button type="button" data-nav-action-v400="notices">${navIcon("megaphone")}<span class="nav-label">Avisos</span></button>
+        </div>`;
+      $$('[data-page]',nav).forEach(button => button.addEventListener("click", async () => {
+        state.page = button.dataset.page; state.selectedClipperId = null; setLocalV400("last_page",state.page);
+        closeSidebarV420(); buildNav(); await touchPresence(true).catch(()=>null); await renderPage(true);
+      }));
+      $$('[data-nav-action-v400="notices"]',nav).forEach(button=>button.addEventListener("click",()=>{closeSidebarV420();openNoticeInbox();}));
+    }
+
+    const mobileNav = $("#mobileNav");
+    if (!mobileNav) return;
+    const mobile = admin
+      ? [["dashboard","home","Inicio"],["reports","report","Reportes"],["payments","wallet","Pagos"],["support","shield","Soporte"],["__more","menu","Más"]]
+      : [["dashboard","home","Inicio"],["videos","video","Videos"],["__create","plus","Crear"],["ideas","megaphone","Ideas"],["__more","menu","Más"]];
+    mobileNav.innerHTML = mobile.map(([id,icon,label])=>`<button type="button" data-mobile-page="${id}" class="${state.page===id?"active":""} ${id==="__create"?"mobile-create-v420":""}">${uiIcon(icon,20)}<span>${esc(label)}</span></button>`).join("");
+    $$('[data-mobile-page]',mobileNav).forEach(button=>button.addEventListener("click",async()=>{
+      const id=button.dataset.mobilePage;
+      if(id==="__create") return openCreateSheetV420();
+      if(id==="__more") return openMoreSheetV400();
+      state.page=id; state.selectedClipperId=null; setLocalV400("last_page",state.page); buildNav(); await touchPresence(true).catch(()=>null); await renderPage(true);
+    }));
+    refreshNavBadgesV420();
+  }
+
+  function openMoreSheetV400() {
+    const admin=isAdminV400();
+    const items=admin
+      ? [["videos","video","Videos"],["metrics","activity","Métricas"],["ideas","megaphone","Ideas"],["support","shield","Soporte"],["announcements","megaphone","Comunicados"],["profile","user","Mi perfil"],["settings","settings","Ajustes"]]
+      : [["networks","network","Mis cuentas"],["history","history","Historial"],["support","shield","Soporte"],["profile","user","Perfil"]];
+    openModal(`<div class="modal-head"><div><span class="section-eyebrow">MÁS</span><h2>${admin?"Centro administrativo":"Tu espacio"}</h2><p>Accesos y configuración.</p></div><button class="modal-close" data-close-v420>×</button></div><div class="modal-body more-sheet-v400 more-sheet-v420">${items.map(([page,icon,label])=>`<button type="button" data-more-page-v420="${page}">${uiIcon(icon,19)}<span>${label}</span>${uiIcon("arrow",15)}</button>`).join("")}<button type="button" data-more-action-v420="notices">${uiIcon("megaphone",19)}<span>${admin?"Notificaciones":"Avisos"}</span>${uiIcon("arrow",15)}</button><button type="button" data-more-action-v420="theme">${uiIcon("activity",19)}<span>Tema</span>${uiIcon("arrow",15)}</button><div class="more-profile-v400">${avatarMarkupV400(state.profile,"sm")}<div><b>${esc(`${state.profile.names||""} ${state.profile.surnames||""}`.trim()||state.profile.username)}</b><small>@${esc(state.profile.username||"")}</small></div></div><button type="button" class="danger" data-more-action-v420="logout">${uiIcon("logout",19)}<span>Cerrar sesión</span></button></div>`,"small",layer=>{
+      $$('[data-close-v420]',layer).forEach(b=>b.addEventListener("click",closeModal));
+      $$('[data-more-page-v420]',layer).forEach(b=>b.addEventListener("click",()=>{const page=b.dataset.morePageV420;closeModal();navigate(page);}));
+      $$('[data-more-action-v420]',layer).forEach(b=>b.addEventListener("click",()=>{const action=b.dataset.moreActionV420;if(action==="notices"){closeModal();openNoticeInbox();}if(action==="theme"){toggleTheme();}if(action==="logout"){closeModal();$("#logoutBtn")?.click();}}));
+    });
+  }
+
+  function openCreateSheetV420() {
+    openModal(`<div class="modal-head"><div><span class="section-eyebrow">CREAR</span><h2>¿Qué quieres hacer?</h2><p>Acciones rápidas sin salir de donde estás.</p></div><button class="modal-close" data-create-close-v420>×</button></div><div class="modal-body create-sheet-v420"><button data-create-v420="video"><i>${uiIcon("plus",21)}</i><span><b>Agregar video</b><small>Registrar contenido publicado</small></span>${uiIcon("arrow",16)}</button><button data-create-v420="reaction"><i>🎬</i><span><b>Sugerir contenido</b><small>Publicaciones para reaccionar</small></span>${uiIcon("arrow",16)}</button><button data-create-v420="idea"><i>💡</i><span><b>Sugerencia de gestión</b><small>Propuesta constructiva</small></span>${uiIcon("arrow",16)}</button><button data-create-v420="support"><i>🎫</i><span><b>Solicitar soporte</b><small>Crear un ticket de ayuda</small></span>${uiIcon("arrow",16)}</button></div>`,"small",layer=>{
+      $("[data-create-close-v420]",layer)?.addEventListener("click",closeModal);
+      $$('[data-create-v420]',layer).forEach(button=>button.addEventListener("click",()=>{
+        const action=button.dataset.createV420; closeModal();
+        if(action==="video") return handleQuickRegisterAction();
+        if(action==="reaction") return setTimeout(()=>openSuggestionComposerV420("reaction"),80);
+        if(action==="idea") return setTimeout(()=>openSuggestionComposerV420("management"),80);
+        if(action==="support") return setTimeout(openNewSupportTicketV420,80);
+      }));
+    });
+  }
+
+  function addSuggestionLinkRowV420(container,index) {
+    const row=document.createElement("div");
+    row.className="suggestion-link-editor-v420"; row.dataset.suggestionLinkRow="1";
+    row.innerHTML=`<div class="suggestion-link-head-v420"><span>${index}</span><label>Publicación<input name="idea_url" type="url" required placeholder="Pega aquí TikTok, Instagram, Facebook o YouTube"></label><button type="button" class="btn btn-ghost btn-sm" data-remove-idea-link-v420 aria-label="Quitar">×</button></div><details><summary>+ Añadir contexto o enfoque <small>opcional</small></summary><div class="suggestion-extra-v420"><label>¿Por qué vale la pena?<textarea name="idea_why" rows="2" placeholder="Contexto breve"></textarea></label><label>Enfoque sugerido<textarea name="idea_note" rows="2" placeholder="Cómo podría reaccionar o abordarlo"></textarea></label></div></details>`;
+    container.appendChild(row);
+    row.querySelector("[data-remove-idea-link-v420]")?.addEventListener("click",()=>row.remove());
+  }
+
+  function openSuggestionComposerV420(kind="reaction") {
+    const reaction=kind==="reaction";
+    openModal(`<div class="modal-head modal-head-v420"><div><span class="section-eyebrow">NUEVA IDEA</span><h2>${reaction?"Contenido para reaccionar":"Sugerencia de gestión"}</h2><p>${reaction?"Comparte publicaciones que valga la pena responder.":"Envía una propuesta concreta y constructiva."}</p></div><button class="modal-close" data-close-idea-v420>×</button></div><form id="suggestionFormV420" class="modal-form-v420"><div class="modal-body suggestion-form-v420 compact-suggestion-v420"><label>Título <small>opcional</small><input name="title" maxlength="160" placeholder="${reaction?"Tema o contexto":"Título de la sugerencia"}"></label>${reaction?'<div class="suggestion-two-v420"><label>Comentario general<textarea name="message" rows="2" maxlength="2000" placeholder="¿Qué está pasando y por qué importa?"></textarea></label><label>Enfoque general<textarea name="reaction_angle" rows="2" maxlength="2000" placeholder="Cómo podría responderse"></textarea></label></div>':'<label>Sugerencia<textarea name="message" rows="4" maxlength="3000" required placeholder="Describe tu propuesta"></textarea></label>'}<div class="suggestion-links-title-v420"><div><h3>${reaction?"Publicaciones":"Referencias"}</h3><p>${reaction?"Agrega uno o varios links.":"Opcional: agrega links de referencia."}</p></div><button id="addSuggestionLinkV420" class="btn btn-gold btn-sm" type="button">${uiIcon("plus",14)} Agregar link</button></div><div id="suggestionLinksV420" class="suggestion-link-list-v420"></div></div><div class="modal-foot"><button type="button" class="btn btn-ghost" data-close-idea-v420>Cancelar</button><button class="btn btn-gold">Enviar idea</button></div></form>`,"medium",layer=>{
+      const container=$("#suggestionLinksV420",layer); if(reaction)addSuggestionLinkRowV420(container,1);
+      $$('[data-close-idea-v420]',layer).forEach(b=>b.addEventListener("click",closeModal));
+      $("#addSuggestionLinkV420",layer)?.addEventListener("click",()=>{const count=container.querySelectorAll('[data-suggestion-link-row]').length;if(count>=10)return toast("Máximo 10 links por envío.","error");addSuggestionLinkRowV420(container,count+1);});
+      $("#suggestionFormV420",layer)?.addEventListener("submit",async event=>{event.preventDefault();const f=Object.fromEntries(new FormData(event.target)),rows=[...container.querySelectorAll('[data-suggestion-link-row]')],links=rows.map((row,index)=>({url:row.querySelector('[name="idea_url"]')?.value.trim()||"",why:row.querySelector('[name="idea_why"]')?.value.trim()||"",note:row.querySelector('[name="idea_note"]')?.value.trim()||"",position:index+1})).filter(x=>x.url);if(reaction&&!links.length)return toast("Agrega al menos un link.","error");for(const link of links){if(!suggestionPlatformFromUrlV410(link.url))return toast("Solo se aceptan links de TikTok, Instagram, YouTube o Facebook.","error");}showLoading(true);try{await query(state.supabase.rpc("clipcontrol_submit_suggestion",{p_kind:kind,p_title:f.title||null,p_message:f.message||null,p_reaction_angle:f.reaction_angle||null,p_links:links}));closeModal();toast("Idea enviada","success");if(state.page==="ideas")await renderClipperIdeasV420();refreshNavBadgesV420();}catch(error){toast(errorMessage(error),"error");}finally{showLoading(false);}});
+    });
+  }
+
+  async function renderClipperIdeasV420() {
+    setHeader("Ideas","Contenido y sugerencias");
+    const items=await fetchSuggestionsV410(false);
+    $("#content").innerHTML=`<section class="ideas-hero-v420"><div><span class="section-eyebrow">IDEAS</span><h2>Comparte lo que puede funcionar</h2><p>Contenido para reaccionar y propuestas de mejora, en un solo lugar.</p></div><div><button class="btn btn-gold" data-new-idea-v420="reaction">🎬 Sugerir contenido</button><button class="btn btn-secondary" data-new-idea-v420="management">💡 Sugerencia</button></div></section><section class="card compact-card"><div class="section-title-row"><div><span class="section-eyebrow">MIS ENVÍOS</span><h3>${items.length} idea${items.length===1?"":"s"}</h3></div></div><div class="ideas-grid-v410">${items.map(item=>suggestionCardV410(item,false)).join("")||'<div class="empty empty-v420"><b>Sin ideas todavía</b><span>Cuando encuentres algo interesante, envíalo desde aquí.</span></div>'}</div></section>`;
+    $$('[data-new-idea-v420]').forEach(b=>b.addEventListener("click",()=>openSuggestionComposerV420(b.dataset.newIdeaV420)));
+  }
+
+  async function fetchLeaderboardV420() {
+    try { return await query(state.supabase.rpc("clipcontrol_leaderboard_v420")); }
+    catch (_) { return {top_clippers:[],top_videos:[]}; }
+  }
+
+  function leaderboardMarkupV420(data={}) {
+    const clippers=Array.isArray(data?.top_clippers)?data.top_clippers:[], videos=Array.isArray(data?.top_videos)?data.top_videos:[];
+    const podium=clippers.map((row,index)=>`<div class="leader-row-v420 ${row.is_me?"is-me":""}"><b class="leader-place-v420">${index===0?"🥇":index===1?"🥈":index===2?"🥉":`#${index+1}`}</b><div><strong>${esc(row.display_name||row.username||"Clipero")}${row.is_me?' <em>Tú</em>':""}</strong><small>${num(row.videos||0)} videos</small></div><span>${num(row.views||0)}<small>vistas</small></span></div>`).join("");
+    const topVideos=videos.map((video,index)=>`<a class="leader-video-v420" href="${esc(video.url||"#")}" target="_blank" rel="noopener"><span class="leader-video-thumb-v420">${video.thumbnail_url?`<img src="${esc(video.thumbnail_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`:platformLogo(video.platform)}<b>${index+1}</b></span><div><strong>${esc(video.title||"Video destacado")}</strong><small>${esc(video.account_name||platformLabel(video.platform))}</small><em>${num(video.views||0)} vistas</em></div></a>`).join("");
+    return `<section class="motivation-grid-v420"><article class="card leaderboard-v420"><div class="section-title-row"><div><span class="section-eyebrow">CLASIFICACIÓN</span><h3>Top del período</h3><p>El rendimiento se actualiza con las métricas.</p></div><span class="trophy-v420">🏆</span></div><div class="leader-list-v420">${podium||'<div class="empty">Aún no hay clasificación.</div>'}</div></article><article class="card leaderboard-v420"><div class="section-title-row"><div><span class="section-eyebrow">CONTENIDO DESTACADO</span><h3>Videos que están rompiéndola</h3></div></div><div class="leader-videos-v420">${topVideos||'<div class="empty">Aún no hay videos destacados.</div>'}</div></article></section>`;
+  }
+
+  async function fetchMyFinalPaymentV420(report) {
+    if (!report?.report_id) return 0;
+    state.myFinalPayCacheV420 = state.myFinalPayCacheV420 || {};
+    if (report.report_id !== state.currentReportId && state.myFinalPayCacheV420[report.report_id] !== undefined) return state.myFinalPayCacheV420[report.report_id];
+    let final = null;
+    try {
+      const [rows,settings] = await Promise.all([fetchAccountPaymentsV280(report.report_id),fetchPaymentDistributionSettingsV360()]);
+      await loadDistributionFlagsV410([report.report_id]);
+      const raw=roundMoneyV360(rows.reduce((sum,row)=>sum+Number(row.final_pay||0),0)+Number(report.bonus_pay||0));
+      if(String(settings?.recipient_user_id||"")!==String(state.profile?.id||"")) final=clipperFinalPaymentV400(raw,report,settings);
+    } catch (_) {}
+    if(final===null){
+      try{const rpcValue=await query(state.supabase.rpc("clipcontrol_my_final_payment_v420",{p_report_id:report.report_id}));const n=Number(rpcValue);if(Number.isFinite(n))final=n;}catch(_){}
+    }
+    if(final===null) final=Number(report.total_pay??report.approved_base_pay??report.calculated_base_pay??0);
+    final=roundMoneyV360(final); state.myFinalPayCacheV420[report.report_id]=final; return final;
+  }
+
+  async function renderClipperDashboardV420() {
+    const s=state.currentSummary;
+    const [accountPayments,leaderboard] = await Promise.all([fetchAccountPaymentsV280(state.currentReportId),fetchLeaderboardV420()]);
+    const finalPay=await fetchMyFinalPaymentV420({...s,report_id:state.currentReportId});
+    const editable=reportEditable(s)&&clipperUploadEnabledV320(), totalViews=state.videos.reduce((sum,v)=>sum+Number(v.views||0),0);
+    setHeader("Inicio",periodRangeLabel(s));
+    $("#content").innerHTML=`${avatarReminderMarkupV370()}${clipperAccessPaymentMarkupV320()}<section class="clipper-hero-v420"><div class="clipper-hero-user-v420">${avatarMarkupV400(state.profile,"lg")}<div><span class="section-eyebrow">PERÍODO ACTIVO</span><h2>Hola, ${esc(state.profile.names||state.profile.username)}</h2><p>@${esc(state.profile.username||"")} · ${esc(periodRangeLabel(s))}</p></div></div><div class="clipper-pay-v420"><small>PAGO FINAL</small><strong>${money(finalPay)}</strong><span>${STATUS_LABELS[s?.status]||"En elaboración"}</span></div></section><section class="clipper-kpis-v420"><article><span>${uiIcon("video",18)}</span><div><strong>${state.videos.length}</strong><small>Videos</small></div></article><article><span>${uiIcon("eye",18)}</span><div><strong>${num(totalViews)}</strong><small>Vistas</small></div></article><article><span>${uiIcon("network",18)}</span><div><strong>${activeAccounts().length}</strong><small>Cuentas</small></div></article></section><section class="quick-grid-v420"><button id="quickAddBtn" class="quick-primary-v420" ${!editable?"disabled":""}>${uiIcon("plus",20)}<span><b>Agregar video</b><small>Registrar publicación</small></span></button><button data-clipper-v420="networks">${uiIcon("network",20)}<span><b>Mis cuentas</b><small>Perfiles sociales</small></span></button><button data-clipper-v420="ideas">${uiIcon("megaphone",20)}<span><b>Enviar idea</b><small>Contenido para reaccionar</small></span></button><button data-clipper-v420="history">${uiIcon("history",20)}<span><b>Historial</b><small>Períodos anteriores</small></span></button><button data-clipper-v420="support">${uiIcon("shield",20)}<span><b>Soporte</b><small>¿Necesitas ayuda?</small></span></button></section><section class="card account-progress-v420"><div class="section-title-row"><div><span class="section-eyebrow">MIS CUENTAS</span><h3>Progreso hacia meta y bono</h3></div><button class="btn btn-ghost btn-sm" data-clipper-v420="networks">Ver cuentas</button></div>${clipperAccountProgressV400(accountPayments)}</section>${leaderboardMarkupV420(leaderboard)}`;
+    $("#quickAddBtn")?.addEventListener("click",handleQuickRegisterAction);bindClipperAccessPaymentActionsV320($("#content"));$("#avatarReminderBtnV370")?.addEventListener("click",()=>navigate("profile"));$$('[data-clipper-v420]').forEach(b=>b.addEventListener("click",()=>navigate(b.dataset.clipperV420)));animateDynamicNumbers($("#content"));
+  }
+
+  async function renderClipperHistoryV420() {
+    setHeader("Historial","Tus períodos y pagos finales");
+    const reports=await query(state.supabase.from("weekly_report_summary").select("*").eq("user_id",state.profile.id).order("week_start",{ascending:false}));
+    const payments=await Promise.all((reports||[]).map(r=>fetchMyFinalPaymentV420(r)));
+    $("#content").innerHTML=`<section class="history-head-v420"><div><span class="section-eyebrow">HISTORIAL</span><h2>Tus períodos</h2><p>El importe mostrado es tu pago final.</p></div><b>${reports.length}</b></section><div class="history-grid-v420">${reports.map((r,i)=>`<article class="history-card-v420"><header><div><strong>${esc(periodRangeLabel(r))}</strong><small>${dateOnlyLabel(r.week_start)} – ${dateOnlyLabel(r.week_end)}</small></div>${statusBadge(r.status)}</header><div class="history-stats-v420"><span><small>VIDEOS</small><b>${num(r.video_count||0)}</b></span><span><small>VISTAS</small><b>${num(r.total_views||0)}</b></span><span class="money"><small>PAGO FINAL</small><b>${money(payments[i])}</b></span></div><button class="btn btn-secondary" data-history-report-v420="${r.report_id}">Ver período ${uiIcon("arrow",14)}</button></article>`).join("")||'<div class="empty card">Todavía no hay períodos anteriores.</div>'}</div>`;
+    $$('[data-history-report-v420]').forEach(b=>b.addEventListener("click",()=>openReportDetail(b.dataset.historyReportV420,false)));
+  }
+
+  async function openReportDetail(reportId, adminMode=false) {
+    showLoading(true);
+    try{
+      const summary=await query(state.supabase.from("weekly_report_summary").select("*").eq("report_id",reportId).single());
+      const [videos,accounts,finalPay]=await Promise.all([
+        query(state.supabase.from("videos").select("*").eq("report_id",reportId).is("deleted_at",null).order("position")),
+        query(state.supabase.from("social_accounts").select("*").eq("user_id",summary.user_id).order("platform")),
+        adminMode?Promise.resolve(reportFinalTotalV360(summary)):fetchMyFinalPaymentV420(summary)
+      ]);
+      openModal(`<div class="modal-head"><div><span class="section-eyebrow">PERÍODO</span><h2>${dateOnlyLabel(summary.week_start)} – ${dateOnlyLabel(summary.week_end)}</h2><p>${esc(summary.names||summary.username)} ${esc(summary.surnames||"")}</p></div><button class="modal-close" data-detail-x-v420>×</button></div><div class="modal-body report-detail-v420"><section class="report-kpis-v420"><div><small>VIDEOS</small><strong>${num(summary.video_count||0)}</strong></div><div><small>VISTAS</small><strong>${num(summary.total_views||0)}</strong></div><div class="money"><small>PAGO FINAL</small><strong>${money(finalPay)}</strong></div><div><small>ESTADO</small><strong>${esc(STATUS_LABELS[summary.status]||summary.status)}</strong></div></section><section class="report-videos-v420">${videosTable(videos,accounts,adminMode)}</section></div><div class="modal-foot"><span></span><button class="btn btn-primary" data-detail-close-v420>Cerrar</button></div>`,"",layer=>{$$("[data-detail-x-v420],[data-detail-close-v420]",layer).forEach(b=>b.addEventListener("click",closeModal));});
+    }catch(error){toast(errorMessage(error),"error");}finally{showLoading(false);}
+  }
+
+  async function fetchSupportTicketsV420() {
+    let q=state.supabase.from("support_tickets").select("*").order("updated_at",{ascending:false});
+    if(!isAdminV400())q=q.eq("user_id",state.profile.id);
+    const tickets=await query(q).catch(error=>{throw new Error(`Soporte no disponible. Ejecuta el SQL 4.2. ${errorMessage(error)}`);});
+    let profiles={};
+    if(isAdminV400()){
+      const ids=[...new Set((tickets||[]).map(x=>x.user_id).filter(Boolean))];
+      if(ids.length){const rows=await query(state.supabase.from("profiles").select("id,username,names,surnames,avatar_url").in("id",ids)).catch(()=>[]);profiles=Object.fromEntries(rows.map(p=>[String(p.id),p]));}
+    }
+    return (tickets||[]).map(t=>({...t,profile:profiles[String(t.user_id)]||null}));
+  }
+
+  function supportStatusBadgeV420(status){const cls=status==="closed"||status==="resolved"?"pill-green":status==="waiting_user"?"pill-yellow":status==="reviewing"?"chip":"pill-red";return `<span class="pill ${cls}">${esc(SUPPORT_STATUS_V420[status]||status)}</span>`;}
+
+  function openNewSupportTicketV420(){
+    openModal(`<div class="modal-head"><div><span class="section-eyebrow">SOPORTE</span><h2>Nuevo ticket</h2><p>Cuéntanos qué necesitas y quedará registrado.</p></div><button class="modal-close" data-support-close-v420>×</button></div><form id="supportNewFormV420" class="modal-form-v420"><div class="modal-body support-form-v420"><div class="form-grid compact-form"><label>Categoría<select name="category" required>${Object.entries(SUPPORT_CATEGORY_V420).map(([v,l])=>`<option value="${v}">${l}</option>`).join("")}</select></label><label>Prioridad<select name="priority"><option value="normal">Normal</option><option value="high">Alta</option><option value="low">Baja</option></select></label><label class="full">Asunto<input name="subject" maxlength="180" required placeholder="Resumen breve"></label><label class="full">Mensaje<textarea name="message" rows="5" maxlength="8000" required placeholder="Describe el problema con el mayor detalle posible"></textarea></label></div></div><div class="modal-foot"><button type="button" class="btn btn-ghost" data-support-close-v420>Cancelar</button><button class="btn btn-gold">Crear ticket</button></div></form>`,"small",layer=>{
+      $$('[data-support-close-v420]',layer).forEach(b=>b.addEventListener("click",closeModal));
+      $("#supportNewFormV420",layer)?.addEventListener("submit",async event=>{event.preventDefault();const f=Object.fromEntries(new FormData(event.target));showLoading(true);try{await query(state.supabase.rpc("clipcontrol_create_support_ticket_v420",{p_category:f.category,p_subject:f.subject,p_message:f.message,p_priority:f.priority}));closeModal();toast("Ticket creado","success");await renderSupportV420();refreshNavBadgesV420();}catch(error){toast(errorMessage(error),"error");}finally{showLoading(false);}});
+    });
+  }
+
+  async function openSupportTicketV420(ticketId){
+    showLoading(true);
+    try{
+      const ticket=await query(state.supabase.from("support_tickets").select("*").eq("id",ticketId).single());
+      const messages=await query(state.supabase.from("support_ticket_messages").select("*").eq("ticket_id",ticketId).order("created_at"));
+      const ids=[...new Set((messages||[]).map(m=>m.sender_id).filter(Boolean))];
+      const profiles=ids.length?await query(state.supabase.from("profiles").select("id,username,names,surnames,avatar_url,role").in("id",ids)).catch(()=>[]):[];
+      const pmap=Object.fromEntries((profiles||[]).map(p=>[String(p.id),p]));
+      const admin=isAdminV400();
+      openModal(`<div class="modal-head"><div><span class="section-eyebrow">TICKET</span><h2>${esc(ticket.subject)}</h2><p>${esc(SUPPORT_CATEGORY_V420[ticket.category]||ticket.category)} · ${dateTimeLabel(ticket.created_at)}</p></div><button class="modal-close" data-ticket-close-v420>×</button></div><div class="modal-body ticket-thread-v420"><div class="ticket-thread-head-v420">${supportStatusBadgeV420(ticket.status)}<span>Prioridad: <b>${ticket.priority==="high"?"Alta":ticket.priority==="low"?"Baja":"Normal"}</b></span></div><div class="ticket-messages-v420">${(messages||[]).map(m=>{const p=pmap[String(m.sender_id)]||{};const mine=String(m.sender_id)===String(state.profile.id);return `<article class="ticket-message-v420 ${mine?"mine":"other"}">${avatarMarkupV400(p,"sm")}<div><header><b>${esc(mine?"Tú":(`${p.names||p.username||"Soporte"}`))}</b><small>${dateTimeLabel(m.created_at)}</small></header><p>${esc(m.body)}</p></div></article>`;}).join("")}</div>${ticket.status!=="closed"?`<form id="ticketReplyFormV420" class="ticket-reply-v420"><textarea name="message" rows="3" required maxlength="8000" placeholder="Escribe una respuesta…"></textarea><button class="btn btn-gold">Enviar</button></form>`:""}${admin?`<section class="ticket-admin-v420"><label>Estado<select id="ticketStatusV420">${Object.entries(SUPPORT_STATUS_V420).map(([v,l])=>`<option value="${v}" ${ticket.status===v?"selected":""}>${l}</option>`).join("")}</select></label><label>Prioridad<select id="ticketPriorityV420"><option value="low" ${ticket.priority==="low"?"selected":""}>Baja</option><option value="normal" ${ticket.priority==="normal"?"selected":""}>Normal</option><option value="high" ${ticket.priority==="high"?"selected":""}>Alta</option></select></label><button id="ticketAdminSaveV420" class="btn btn-secondary">Guardar estado</button></section>`:""}</div>`,"medium",layer=>{
+        $("[data-ticket-close-v420]",layer)?.addEventListener("click",closeModal);
+        $("#ticketReplyFormV420",layer)?.addEventListener("submit",async event=>{event.preventDefault();const message=new FormData(event.target).get("message");showLoading(true);try{await query(state.supabase.rpc("clipcontrol_send_support_message_v420",{p_ticket_id:ticketId,p_message:message}));closeModal();await openSupportTicketV420(ticketId);refreshNavBadgesV420();}catch(error){toast(errorMessage(error),"error");}finally{showLoading(false);}});
+        $("#ticketAdminSaveV420",layer)?.addEventListener("click",async()=>{showLoading(true);try{await query(state.supabase.rpc("admin_update_support_ticket_v420",{p_ticket_id:ticketId,p_status:$("#ticketStatusV420",layer).value,p_priority:$("#ticketPriorityV420",layer).value}));closeModal();toast("Ticket actualizado","success");await renderSupportV420();refreshNavBadgesV420();}catch(error){toast(errorMessage(error),"error");}finally{showLoading(false);}});
+        setTimeout(()=>{$(".ticket-messages-v420",layer)?.scrollTo({top:999999,behavior:"smooth"});},50);
+      });
+    }catch(error){toast(errorMessage(error),"error");}finally{showLoading(false);}
+  }
+
+  async function renderSupportV420(){
+    setHeader("Soporte",isAdminV400()?"Mesa de ayuda":"Ayuda y seguimiento");
+    const tickets=await fetchSupportTicketsV420();
+    const openCount=tickets.filter(t=>!["resolved","closed"].includes(t.status)).length;
+    $("#content").innerHTML=`<section class="support-hero-v420"><div><span class="section-eyebrow">MESA DE AYUDA</span><h2>${isAdminV400()?`${openCount} ticket${openCount===1?"":"s"} activo${openCount===1?"":"s"}`:"¿Necesitas ayuda?"}</h2><p>${isAdminV400()?"Organiza y responde consultas sin perderlas en otros canales.":"Crea un ticket y sigue la respuesta desde ClipControl."}</p></div>${!isAdminV400()?'<button id="newSupportTicketV420" class="btn btn-gold">🎫 Nuevo ticket</button>':""}</section><div class="support-list-v420">${tickets.map(t=>`<button class="support-ticket-card-v420" data-ticket-v420="${t.id}"><div class="support-ticket-icon-v420">${t.category==="payment"?"S/":t.category==="metrics"?"↻":t.category==="technical"?"⚙":"?"}</div><div><header><strong>${esc(t.subject)}</strong>${supportStatusBadgeV420(t.status)}</header><p>${isAdminV400()&&t.profile?`${esc(`${t.profile.names||t.profile.username||""} ${t.profile.surnames||""}`.trim())} · `:""}${esc(SUPPORT_CATEGORY_V420[t.category]||t.category)}</p><small>Actualizado ${dateTimeLabel(t.updated_at)}</small></div><span>${uiIcon("arrow",17)}</span></button>`).join("")||'<div class="empty card empty-v420"><b>No hay tickets</b><span>Todo está en orden por aquí.</span></div>'}</div>`;
+    $("#newSupportTicketV420")?.addEventListener("click",openNewSupportTicketV420);$$('[data-ticket-v420]').forEach(b=>b.addEventListener("click",()=>openSupportTicketV420(b.dataset.ticketV420)));
+  }
+
+  async function uploadBrandLogoV420(file){
+    if(!file) return state.settings?.brand_logo_url||null;
+    if(!/^image\/(jpeg|png|webp)$/i.test(file.type||""))throw new Error("Usa una imagen JPG, PNG o WEBP.");
+    if(file.size>5*1024*1024)throw new Error("El logo debe pesar máximo 5 MB.");
+    const path=`${state.profile.id}/brand-logo-v420`;
+    const {error}=await state.supabase.storage.from("profile-avatars").upload(path,file,{upsert:true,contentType:file.type,cacheControl:"3600"});if(error)throw error;
+    const {data}=state.supabase.storage.from("profile-avatars").getPublicUrl(path);return `${data.publicUrl}?v=${Date.now()}`;
+  }
+
+  async function renderAdminProfileV420(){
+    setHeader("Mi perfil","Identidad del administrador");
+    const p=state.profile;
+    $("#content").innerHTML=`<section class="admin-profile-v420"><div class="admin-profile-visual-v420">${avatarMarkupV400(p,"xl")}<span class="section-eyebrow">ADMINISTRACIÓN</span><h2>${esc(`${p.names||""} ${p.surnames||""}`.trim()||p.username)}</h2><p>@${esc(p.username||"")}</p><label class="btn btn-gold" for="adminAvatarV420">${uiIcon("upload",15)} ${p.avatar_url?"Cambiar foto":"Subir foto"}</label><input id="adminAvatarV420" hidden type="file" accept="image/jpeg,image/png,image/webp"><small>JPG, PNG o WEBP · máximo 5 MB</small></div><div class="card admin-profile-info-v420"><span class="section-eyebrow">PERFIL</span><h3>Tu imagen también aparece en ClipControl</h3><p>La foto se utiliza en la cabecera y en tus respuestas de soporte.</p><div class="profile-data-grid-v420"><div><small>Usuario</small><b>@${esc(p.username||"")}</b></div><div><small>Rol</small><b>${p.role==="superadmin"?"Superadministrador":"Administrador"}</b></div><div><small>Nombre</small><b>${esc(`${p.names||""} ${p.surnames||""}`.trim()||"Pendiente")}</b></div><div><small>WhatsApp</small><b>${esc(p.phone||"Pendiente")}</b></div></div></div></section>`;
+    $("#adminAvatarV420")?.addEventListener("change",async e=>{const f=e.target.files?.[0];if(!f)return;await uploadMyAvatar(f);});
+  }
+
+  async function renderAdminSettingsV420(){
+    await renderAdminSettings();
+    const settings=await query(state.supabase.from("app_settings").select("*").eq("id",1).single()).catch(()=>state.settings||{});state.settings={...(state.settings||{}),...(settings||{})};
+    const shell=$(".settings-section"),nav=shell?.querySelector(".settings-nav");if(!shell||!nav)return;
+    if(!nav.querySelector('[data-settings-tab="branding"]'))nav.insertAdjacentHTML("beforeend",'<button data-settings-tab="branding">Marca e imagen</button>');
+    let pane=shell.querySelector('[data-settings-pane="branding"]');if(!pane){pane=document.createElement("div");pane.className="settings-pane";pane.dataset.settingsPane="branding";shell.appendChild(pane);}
+    pane.innerHTML=`<div class="branding-grid-v420"><section class="card branding-preview-v420"><span class="section-eyebrow">VISTA PREVIA</span><div class="branding-logo-v420" id="brandLogoPreviewV420">${state.settings.brand_logo_url?`<img src="${esc(state.settings.brand_logo_url)}" alt="Logo">`:'<img src="./imagen1" alt="Logo">'}</div><h2 id="brandNamePreviewV420">${esc(state.settings.brand_name||"ClipControl")}</h2><p id="brandTaglinePreviewV420">${esc(state.settings.brand_tagline||"Creator Control")}</p></section><section class="card"><div class="card-head"><div><h2>Marca de ClipControl</h2><p>Personaliza el nombre y logo visibles en el panel.</p></div></div><form id="brandingFormV420" class="form-grid compact-form"><label>Nombre visible<input name="brand_name" maxlength="80" value="${esc(state.settings.brand_name||"ClipControl")}"></label><label>Subtítulo<input name="brand_tagline" maxlength="120" value="${esc(state.settings.brand_tagline||"Creator Control")}"></label><label class="full">Logo<label class="brand-file-v420" for="brandLogoFileV420">${uiIcon("upload",16)} <span>Elegir imagen</span></label><input id="brandLogoFileV420" type="file" hidden accept="image/jpeg,image/png,image/webp"></label><div class="full actions"><button class="btn btn-gold">Guardar marca</button></div></form></section></div>`;
+    $$('[data-settings-tab]',shell).forEach(b=>{b.onclick=()=>{$$('[data-settings-tab]',shell).forEach(x=>x.classList.toggle("active",x===b));$$('[data-settings-pane]',shell).forEach(x=>x.classList.toggle("active",x.dataset.settingsPane===b.dataset.settingsTab));};});
+    let pendingLogo=null,pendingUrl=null;
+    $("#brandLogoFileV420")?.addEventListener("change",e=>{pendingLogo=e.target.files?.[0]||null;if(!pendingLogo)return;if(pendingUrl)URL.revokeObjectURL(pendingUrl);pendingUrl=URL.createObjectURL(pendingLogo);$("#brandLogoPreviewV420").innerHTML=`<img src="${pendingUrl}" alt="Vista previa">`;});
+    $("#brandingFormV420")?.addEventListener("input",e=>{const form=e.currentTarget;$("#brandNamePreviewV420").textContent=form.brand_name.value||"ClipControl";$("#brandTaglinePreviewV420").textContent=form.brand_tagline.value||"Creator Control";});
+    $("#brandingFormV420")?.addEventListener("submit",async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.currentTarget));showLoading(true);try{let logo=state.settings.brand_logo_url||null;if(pendingLogo)logo=await uploadBrandLogoV420(pendingLogo);const updated=await query(state.supabase.rpc("admin_update_branding_v420",{p_brand_name:f.brand_name,p_brand_tagline:f.brand_tagline,p_brand_logo_url:logo}));state.settings=Array.isArray(updated)?updated[0]:updated;applyBrandingV420();toast("Marca actualizada","success");await renderAdminSettingsV420();}catch(error){toast(errorMessage(error),"error");}finally{showLoading(false);if(pendingUrl)URL.revokeObjectURL(pendingUrl);}});
+  }
+
+  async function renderAdminPage(){
+    const week=state.adminWeek||state.activePeriod?.start_date||currentWeekStartISO();
+    if(["dashboard","reports","payments"].includes(state.page))await preloadDistributionFlagsForWeekV410(week);
+    if(state.page==="dashboard")return renderAdminDashboardV400();
+    if(state.page==="reports")return renderAdminReportsV300();
+    if(state.page==="videos")return renderAdminVideoCenterV300();
+    if(state.page==="metrics")return renderMetricInboxV300();
+    if(state.page==="channel")return renderPublicYoutube();
+    if(state.page==="clippers")return state.selectedClipperId?renderClipperAdminDetail():renderAdminClippersV400();
+    if(state.page==="payments")return renderAdminPaymentsV400();
+    if(state.page==="ideas")return renderAdminIdeasV410();
+    if(state.page==="support")return renderSupportV420();
+    if(state.page==="profile")return renderAdminProfileV420();
+    if(state.page==="announcements")return renderAdminAnnouncements();
+    if(state.page==="settings")return renderAdminSettingsV420();
+    state.page="dashboard";return renderAdminDashboardV400();
+  }
+
+  async function renderClipperPage(){
+    if(["dashboard","videos","networks","channel"].includes(state.page))await loadClipperCurrentData();
+    if(state.page==="dashboard")return renderClipperDashboardV420();
+    if(state.page==="videos")return renderClipperVideosV400();
+    if(state.page==="channel")return renderPublicYoutube();
+    if(state.page==="networks")return renderNetworks();
+    if(state.page==="ideas")return renderClipperIdeasV420();
+    if(state.page==="support")return renderSupportV420();
+    if(state.page==="history")return renderClipperHistoryV420();
+    if(state.page==="profile")return renderProfilePage();
+    state.page="dashboard";return renderClipperDashboardV420();
+  }
+
+  // El menú móvil usa captura para evitar dobles listeners heredados de capas previas.
+  document.addEventListener("click",event=>{
+    const menu=event.target.closest?.("#menuBtn");
+    if(menu&&window.innerWidth<=1180){event.preventDefault();event.stopPropagation();event.stopImmediatePropagation();openSidebarV420();return;}
+    if(event.target.closest?.("#sidebar [data-page]"))setTimeout(closeSidebarV420,0);
+  },true);
+  window.addEventListener("resize",()=>{if(window.innerWidth>1180)closeSidebarV420();},{passive:true});
+  window.addEventListener("DOMContentLoaded",ensureResponsiveShellV420);
+
 
   // Herramientas de diagnóstico solo cuando debug=true en supabase-config.js.
   if (window.CLIPCONTROL_SUPABASE?.debug === true) {
@@ -7460,7 +7836,7 @@
     window.clipcontrolDebugFacebook = (url) => invokeProcessor({ action:"facebook_probe", url });
     window.clipcontrolDebugFrontend = () => ({
       version: CLIPCONTROL_FRONTEND_VERSION,
-      source: "app-v3.4.1-payment-fix.js",
+      source: "app-v4.2.0-professional-responsive.js",
       scripts: [...document.scripts].map((script) => script.src).filter(Boolean),
       samples: {
         facebook_reel: videoUrlValidation("https://www.facebook.com/reel/1579243183893033"),
