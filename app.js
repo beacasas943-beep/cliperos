@@ -1,5 +1,5 @@
 (() => {
-  const CLIPCONTROL_FRONTEND_VERSION = "4.2.0-professional-responsive";
+  const CLIPCONTROL_FRONTEND_VERSION = "4.2.4-payment-distribution-rule-fix";
   window.CLIPCONTROL_FRONTEND_VERSION = CLIPCONTROL_FRONTEND_VERSION;
   document.documentElement.dataset.clipcontrolUi = "4.2.0-professional-responsive";
   "use strict";
@@ -4332,12 +4332,41 @@
   }
 
   function profileAvatarMarkup(profile, size = "medium") {
+    const sizeMap = { sm:"small", md:"medium", lg:"large", xl:"xl" };
+    const safeSize = sizeMap[size] || size || "medium";
     const url = String(profile?.avatar_url || "").trim();
     const roleClass = profile?.role && profile.role !== "clipper" ? " avatar-admin" : "";
     if (url && /^https?:\/\//i.test(url)) {
-      return `<span class="profile-avatar profile-avatar-${size}${roleClass}"><img src="${esc(url)}" alt="Foto de ${esc(profile?.names || profile?.username || "usuario")}" loading="lazy" referrerpolicy="no-referrer"></span>`;
+      return `<span class="profile-avatar profile-avatar-${safeSize}${roleClass}"><img src="${esc(url)}" alt="Foto de ${esc(profile?.names || profile?.username || "usuario")}" loading="lazy" referrerpolicy="no-referrer"></span>`;
     }
-    return `<span class="profile-avatar profile-avatar-${size} profile-avatar-fallback${roleClass}">${esc(profileInitials(profile))}</span>`;
+    return `<span class="profile-avatar profile-avatar-${safeSize} profile-avatar-fallback${roleClass}">${esc(profileInitials(profile))}</span>`;
+  }
+
+  function avatarProfileForUserV422(userId, fallback = {}) {
+    const profile = state.profileAvatarByUserV422?.[String(userId)] || {};
+    return { ...(fallback || {}), ...profile, id:userId, avatar_url:profile.avatar_url || fallback?.avatar_url || "" };
+  }
+
+  function clipperIdentityMarkupV422(report, size = "sm") {
+    const profile = avatarProfileForUserV422(report?.user_id, {
+      names:`${report?.names || ""} ${report?.surnames || ""}`.trim(),
+      username:report?.username || "",
+      role:"clipper"
+    });
+    return `<div class="report-person report-person-v224 report-person-v422">${profileAvatarMarkup(profile,size)}<div><strong>${esc(report?.names||report?.username||"")}${report?.surnames?` ${esc(report.surnames)}`:""}</strong><small>@${esc(report?.username||"")}</small></div></div>`;
+  }
+
+
+  function topVideoOwnerBadgeV423(video) {
+    const fallback = {
+      names: video?.clipper_name || video?.username || "Clipero",
+      username: video?.username || "",
+      role: "clipper"
+    };
+    const profile = avatarProfileForUserV422(video?.user_id, fallback);
+    const name = profile?.names || video?.clipper_name || video?.username || "Clipero";
+    const username = profile?.username || video?.username || "";
+    return `<span class="top-video-owner-v423">${profileAvatarMarkup(profile,"tiny")}<span><b>${esc(name)}</b><small>${username ? `@${esc(username)}` : "Clipero"}</small></span></span>`;
   }
 
   function effectiveLastAccess(user) {
@@ -4929,8 +4958,8 @@
       const canReturn = !["draft","paid","closed","expired"].includes(r.status);
       return `<div class="report-actions-v234">${canReturn?`<button class="btn btn-elaboration btn-sm" data-return-draft="${r.report_id}" title="Seguir en elaboración">↩ <span>Elaborar</span></button>`:""}<button class="btn btn-sm report-evaluate-btn-v224" data-admin-report="${r.report_id}">${uiIcon("arrow",14)}<span>Evaluar</span></button></div>`;
     };
-    const rows = reports.map(r => `<tr class="report-row-v224 row-${statusClass(r.status)}"><td><div class="report-person report-person-v224"><strong>${esc(r.names||r.username)} ${esc(r.surnames||"")}</strong><small>@${esc(r.username)}</small></div></td><td><div class="report-number-v224"><b>${r.video_count}</b><small>${r.account_count} cuenta${Number(r.account_count)===1?"":"s"}</small></div></td><td><div class="report-metric-main metric-main-v224">${uiIcon("eye",14)}<b>${num(r.total_views)}</b></div><div class="report-like-line metric-like-v224">${uiIcon("heart",12)} ${num(r.total_likes||0)}</div></td><td>${reportPlatformProgressMarkup(r.report_id,r.user_id)}</td><td><b class="report-pay-v224">${money(reportFinalTotalV360(r))}</b><small class="pay-sum-note">Pago final del período</small></td><td>${statusBadge(r.status)}</td><td>${actionMarkup(r)}</td></tr>`).join("");
-    const cards = reports.map(r => `<article class="mobile-report-card-v224 row-${statusClass(r.status)}"><div class="mobile-report-head-v224"><div class="report-person-v224"><strong>${esc(r.names||r.username)} ${esc(r.surnames||"")}</strong><small>@${esc(r.username)}</small></div>${statusBadge(r.status)}</div><div class="mobile-report-stats-v224"><div><span>Videos</span><b>${r.video_count}</b></div><div><span>Vistas</span><b>${num(r.total_views)}</b></div><div><span>Likes</span><b>${num(r.total_likes||0)}</b></div><div><span>Pago</span><b>${money(reportFinalTotalV360(r))}</b></div></div><div class="mobile-network-breakdown"><span>Avance por redes</span>${reportPlatformProgressMarkup(r.report_id,r.user_id)}</div>${actionMarkup(r)}</article>`).join("");
+    const rows = reports.map(r => `<tr class="report-row-v224 row-${statusClass(r.status)}"><td>${clipperIdentityMarkupV422(r,"sm")}</td><td><div class="report-number-v224"><b>${r.video_count}</b><small>${r.account_count} cuenta${Number(r.account_count)===1?"":"s"}</small></div></td><td><div class="report-metric-main metric-main-v224">${uiIcon("eye",14)}<b>${num(r.total_views)}</b></div><div class="report-like-line metric-like-v224">${uiIcon("heart",12)} ${num(r.total_likes||0)}</div></td><td>${reportPlatformProgressMarkup(r.report_id,r.user_id)}</td><td><b class="report-pay-v224">${money(reportFinalTotalV360(r))}</b><small class="pay-sum-note">Pago final del período</small></td><td>${statusBadge(r.status)}</td><td>${actionMarkup(r)}</td></tr>`).join("");
+    const cards = reports.map(r => `<article class="mobile-report-card-v224 row-${statusClass(r.status)}"><div class="mobile-report-head-v224">${clipperIdentityMarkupV422(r,"sm")}${statusBadge(r.status)}</div><div class="mobile-report-stats-v224"><div><span>Videos</span><b>${r.video_count}</b></div><div><span>Vistas</span><b>${num(r.total_views)}</b></div><div><span>Likes</span><b>${num(r.total_likes||0)}</b></div><div><span>Pago</span><b>${money(reportFinalTotalV360(r))}</b></div></div><div class="mobile-network-breakdown"><span>Avance por redes</span>${reportPlatformProgressMarkup(r.report_id,r.user_id)}</div>${actionMarkup(r)}</article>`).join("");
     return `<div class="desktop-report-table desktop-report-table-v224"><table><thead><tr><th>Clipero</th><th>Videos</th><th>Métricas</th><th>Avance por redes</th><th>Pago total</th><th>Estado</th><th></th></tr></thead><tbody>${rows}</tbody></table></div><div class="mobile-report-cards mobile-report-cards-v224">${cards}</div>`;
   }
 
@@ -5902,6 +5931,13 @@
     return Math.round((Number(value || 0) * 100) + 1e-8) / 100;
   }
 
+  // V4.2.1: la distribución es provisional desde que existe pago, incluso mientras
+  // el reporte está "draft/En elaboración". Solo un reporte expirado deja de aportar.
+  // Así el clipero ve desde ahora su PAGO FINAL y el cierre no cambia sorpresivamente el monto.
+  function paymentDistributionEligibleV421(status) {
+    return String(status || "draft").toLowerCase() !== "expired";
+  }
+
   async function fetchPaymentDistributionSettingsV360() {
     try {
       const row = await query(
@@ -5955,18 +5991,25 @@
     const rows = source.map(report => {
       const original = roundMoneyV360(reportDisplayTotal(report));
       const isRecipient = String(report.user_id || "") === recipientId;
-      const reportSent = report.status && report.status !== "draft";
-      const valid = enabled && !isRecipient && original > 0 && reportSent;
-      const contribution = valid ? roundMoneyV360(Math.min(original, discount)) : 0;
+      const exempt = reportDistributionExemptV410(report);
+      const eligibleStatus = paymentDistributionEligibleV421(report.status);
+      // Regla V4.2.4:
+      // - S/30 administrativo: por cada clipero elegible con pago > 0, tenga o no excepción.
+      // - S/30 descontado al clipero: solo si NO tiene excepción.
+      const adminEligible = enabled && !isRecipient && original > 0 && eligibleStatus;
+      const deductionEligible = adminEligible && !exempt;
+      const contribution = deductionEligible ? roundMoneyV360(Math.min(original, discount)) : 0;
       return {
         report_id: report.report_id,
         user_id: report.user_id,
         original,
         contribution,
-        admin_extra: valid ? adminExtra : 0,
+        admin_extra: adminEligible ? adminExtra : 0,
         final: roundMoneyV360(original - contribution),
         is_recipient: isRecipient,
-        counted_valid: valid,
+        exempt,
+        counted_valid: adminEligible,
+        counted_discount: deductionEligible,
       };
     });
 
@@ -6185,7 +6228,7 @@
       const youtubeId = youtubeVideoIdFromUrl(video.video_url);
       const rawThumb = video.thumbnail_url || (youtubeId ? `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg` : "");
       const thumb = video.platform === "facebook" && facebookCdnThumbnailExpired(rawThumb) ? "" : rawThumb;
-      return `<a class="admin-leader-row-v300" href="${esc(video.video_url)}" target="_blank" rel="noopener"><span class="leader-rank-v300">${index+1}</span><span class="leader-thumb-v300">${thumb?`<img src="${esc(thumb)}" alt="" loading="lazy" onerror="this.remove()">`:platformLogo(video.platform)}</span><span class="leader-copy-v300"><b>${esc(video.external_title || `Video ${video.position || ""}`)}</b><small>${platformLogo(video.platform)} ${esc(accountName)}</small></span><strong>${num(video.views)}</strong><i>${uiIcon("arrow",14)}</i></a>`;
+      return `<a class="admin-leader-row-v300" href="${esc(video.video_url)}" target="_blank" rel="noopener"><span class="leader-rank-v300">${index+1}</span><span class="leader-thumb-v300">${thumb?`<img src="${esc(thumb)}" alt="" loading="lazy" onerror="this.remove()">`:platformLogo(video.platform)}</span><span class="leader-copy-v300"><b>${esc(video.external_title || `Video ${video.position || ""}`)}</b><small>${platformLogo(video.platform)} ${esc(accountName)}</small>${topVideoOwnerBadgeV423(video)}</span><strong>${num(video.views)}</strong><i>${uiIcon("arrow",14)}</i></a>`;
     }).join("")}</div></section>`;
   }
 
@@ -6194,12 +6237,15 @@
     if (!state.adminWeek) state.adminWeek = state.activePeriod?.start_date || periods?.[0]?.start_date || currentWeekStartISO();
     const reports = await query(state.supabase.from("weekly_report_summary").select("*").eq("week_start",state.adminWeek).order("total_views",{ascending:false}));
     const reportIds = reports.map(report => report.report_id);
-    const [platformRows,data,paymentRules,settings,distributionSettings] = await Promise.all([
+    const userIds = [...new Set(reports.map(report => report.user_id).filter(Boolean))];
+    await loadDistributionFlagsV410(reportIds);
+    const [platformRows,data,paymentRules,settings,distributionSettings,profiles] = await Promise.all([
       reportIds.length ? query(state.supabase.from("weekly_report_platform_summary").select("*").in("report_id",reportIds)) : Promise.resolve([]),
       loadAdminVideoCenterData(reports,true),
       query(state.supabase.from("platform_payment_rules").select("*")).catch(()=>[]),
       query(state.supabase.from("app_settings").select("*").eq("id",1).single()).catch(()=>state.settings||{}),
       fetchPaymentDistributionSettingsV360(),
+      userIds.length ? query(state.supabase.from("profiles").select("id,avatar_url,names,surnames,username").in("id",userIds)).catch(()=>[]) : Promise.resolve([]),
     ]);
     state.adminReportIds = reportIds;
     state.adminPlatformRows = platformRows || [];
@@ -6210,6 +6256,7 @@
     state.paymentTotalsV280 = Object.fromEntries(paymentBundle.totals.map(row => [row.report_id,row]));
     state.paymentDistributionSettingsV360 = distributionSettings || {};
     state.paymentDistributionV360 = buildPaymentDistributionV360(reports, state.paymentDistributionSettingsV360);
+    state.profileAvatarByUserV422 = Object.fromEntries((profiles||[]).map(profile=>[String(profile.id),profile]));
     state.adminRegisteredPlatformsByUser = {};
     for (const account of data.accounts || []) {
       if (!state.adminRegisteredPlatformsByUser[account.user_id]) state.adminRegisteredPlatformsByUser[account.user_id] = [];
@@ -6708,7 +6755,7 @@
     state.platformRuleMap=Object.fromEntries((paymentRules||[]).map(rule=>[rule.platform,rule]));
     state.paymentTotalsV280=Object.fromEntries((paymentTotals||[]).map(row=>[row.report_id,row]));
     state.paymentDistributionSettingsV360=distributionSettings||{};
-    state.paymentDistributionV360=buildPaymentDistributionV360(reports,state.paymentDistributionSettingsV360);
+    state.paymentDistributionV360=buildPaymentDistributionV360(reports,state.paymentDistributionSettingsV360);state.profileAvatarByUserV422=Object.fromEntries((profiles||[]).map(profile=>[String(profile.id),profile]));
     const selectedPeriod=periods.find(p=>p.start_date===state.adminWeek) || {start_date:state.adminWeek};
     const activeClippers=(overview||[]).filter(u=>u.role==="clipper"&&u.active!==false);
     const reportUsers=new Set(reports.map(r=>String(r.user_id)));
@@ -6798,9 +6845,10 @@
   async function renderAdminPaymentsV400() {
     const start=state.adminWeek || state.activePeriod?.start_date || currentWeekStartISO();
     setHeader("Pagos", periodRangeLabel({week_start:start}));
-    const reportsRaw=await query(state.supabase.from("weekly_report_summary").select("*").eq("week_start",start).order("names"));
+    const reportsRaw=await query(state.supabase.from("weekly_report_summary").select("*").eq("week_start",start).order("total_views",{ascending:false}));
     const reports=[...(reportsRaw||[])];
     const ids=reports.map(r=>r.report_id).filter(Boolean);
+    await loadDistributionFlagsV410(ids);
     const userIds=[...new Set(reports.map(r=>r.user_id).filter(Boolean))];
     const [platformRows,videos,accounts,paymentRules,settings,distributionSettings,profiles]=await Promise.all([
       ids.length?query(state.supabase.from("weekly_report_platform_summary").select("*").in("report_id",ids)):Promise.resolve([]),
@@ -6809,7 +6857,7 @@
       query(state.supabase.from("platform_payment_rules").select("*")).catch(()=>[]),
       query(state.supabase.from("app_settings").select("*").eq("id",1).single()).catch(()=>state.settings||{}),
       fetchPaymentDistributionSettingsV360(),
-      userIds.length?query(state.supabase.from("profiles").select("id,avatar_url").in("id",userIds)).catch(()=>[]):Promise.resolve([]),
+      userIds.length?query(state.supabase.from("profiles").select("id,avatar_url,names,surnames,username").in("id",userIds)).catch(()=>[]):Promise.resolve([]),
     ]);
     state.adminPlatformRows=platformRows||[];
     state.platformRuleMap=Object.fromEntries((paymentRules||[]).map(rule=>[rule.platform,rule]));
@@ -6818,13 +6866,14 @@
     state.frontendAccountPaymentsV350=bundle.accountRows;
     state.paymentTotalsV280=Object.fromEntries(bundle.totals.map(row=>[row.report_id,row]));
     state.paymentDistributionSettingsV360=distributionSettings||{};
-    state.paymentDistributionV360=buildPaymentDistributionV360(reports,state.paymentDistributionSettingsV360);
+    state.paymentDistributionV360=buildPaymentDistributionV360(reports,state.paymentDistributionSettingsV360);state.profileAvatarByUserV422=Object.fromEntries((profiles||[]).map(profile=>[String(profile.id),profile]));
     const profileMap=Object.fromEntries((profiles||[]).map(p=>[String(p.id),p]));
+    state.profileAvatarByUserV422={...(state.profileAvatarByUserV422||{}),...profileMap};
     const allRows=reports.map(report=>paymentRowDataV400(report,accounts,profileMap));
     state.paymentRowsV400=allRows;
     state.paymentReportsV400=reports;
     const persisted=getLocalV400("payment_filters",{})||{};
-    state.paymentFiltersV400={search:persisted.search||"",method:persisted.method||"all",sort:persisted.sort||"pay_asc"};
+    state.paymentFiltersV400={search:persisted.search||"",method:persisted.method||"all",sort:persisted.sort||"views_desc"};
     const methods=[...new Set(allRows.map(r=>r.method).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"es"));
     const total=roundMoneyV360(allRows.reduce((sum,row)=>sum+row.final,0));
     const withPay=allRows.filter(row=>row.final>0).length;
@@ -6832,7 +6881,7 @@
     $("#content").innerHTML=`
       <section class="payments-head-v400"><div><span class="section-eyebrow">PAGOS DEL PERÍODO</span><h2>${esc(periodRangeLabel({week_start:start}))}</h2><p>Pago final por persona, listo para procesar.</p></div><div class="export-actions-v400"><button id="exportExcelV400" class="btn btn-excel-v330" type="button">${uiIcon("report",15)} Excel</button><button id="exportImageV400" class="btn btn-secondary" type="button">🖼️ Imagen</button><button id="exportPdfV400" class="btn btn-secondary" type="button">📄 PDF</button></div></section>
       <section class="payment-kpis-v400"><article><small>PERSONAS</small><strong>${allRows.length}</strong></article><article><small>CON PAGO</small><strong>${withPay}</strong></article><article><small>CON S/0</small><strong>${zero}</strong></article><article class="money"><small>TOTAL GENERAL</small><strong>${money(total)}</strong></article></section>
-      <section class="payment-toolbar-v400 card"><label class="payment-search-v400">${uiIcon("search",16)}<input id="paySearchV400" value="${esc(state.paymentFiltersV400.search)}" placeholder="Buscar clipero, seudónimo, titular o cuenta…"></label><label><span>Método</span><select id="payMethodV400"><option value="all">Todos</option>${methods.map(method=>`<option value="${esc(method)}" ${state.paymentFiltersV400.method===method?"selected":""}>${esc(method)}</option>`).join("")}</select></label><label><span>Ordenar</span><select id="paySortV400"><option value="pay_asc" ${state.paymentFiltersV400.sort==="pay_asc"?"selected":""}>Pago menor → mayor</option><option value="pay_desc" ${state.paymentFiltersV400.sort==="pay_desc"?"selected":""}>Pago mayor → menor</option><option value="name_asc" ${state.paymentFiltersV400.sort==="name_asc"?"selected":""}>Nombre A → Z</option><option value="name_desc" ${state.paymentFiltersV400.sort==="name_desc"?"selected":""}>Nombre Z → A</option></select></label></section>
+      <section class="payment-toolbar-v400 card"><label class="payment-search-v400">${uiIcon("search",16)}<input id="paySearchV400" value="${esc(state.paymentFiltersV400.search)}" placeholder="Buscar clipero, seudónimo, titular o cuenta…"></label><label><span>Método</span><select id="payMethodV400"><option value="all">Todos</option>${methods.map(method=>`<option value="${esc(method)}" ${state.paymentFiltersV400.method===method?"selected":""}>${esc(method)}</option>`).join("")}</select></label><label><span>Ordenar</span><select id="paySortV400"><option value="views_desc" ${state.paymentFiltersV400.sort==="views_desc"?"selected":""}>Vistas mayor → menor</option><option value="views_asc" ${state.paymentFiltersV400.sort==="views_asc"?"selected":""}>Vistas menor → mayor</option><option value="pay_desc" ${state.paymentFiltersV400.sort==="pay_desc"?"selected":""}>Pago mayor → menor</option><option value="pay_asc" ${state.paymentFiltersV400.sort==="pay_asc"?"selected":""}>Pago menor → mayor</option><option value="name_asc" ${state.paymentFiltersV400.sort==="name_asc"?"selected":""}>Nombre A → Z</option><option value="name_desc" ${state.paymentFiltersV400.sort==="name_desc"?"selected":""}>Nombre Z → A</option></select></label></section>
       <div id="paymentResultsMetaV400" class="filter-result-line"></div><section id="paymentResultsV400"></section>`;
 
     const renderRows=()=>{
@@ -6841,8 +6890,15 @@
         const hay=`${row.full} ${row.report.username||""} ${row.alias} ${row.method} ${row.account} ${row.holder}`.toLowerCase();
         return (!f.search||hay.includes(f.search.toLowerCase()))&&(f.method==="all"||row.method===f.method);
       });
-      rows.sort((a,b)=>f.sort==="pay_desc"?b.final-a.final:f.sort==="name_asc"?a.full.localeCompare(b.full,"es",{sensitivity:"base"}):f.sort==="name_desc"?b.full.localeCompare(a.full,"es",{sensitivity:"base"}):a.final-b.final||a.full.localeCompare(b.full,"es",{sensitivity:"base"}));
-      $("#paymentResultsMetaV400").innerHTML=`<span><b>${rows.length}</b> de ${allRows.length} personas</span><span>Orden: ${f.sort==="pay_asc"?"menor → mayor":f.sort==="pay_desc"?"mayor → menor":f.sort==="name_asc"?"A → Z":"Z → A"}</span>`;
+      rows.sort((a,b)=>{
+        if(f.sort==="views_desc") return (b.views-a.views)||(b.final-a.final)||a.full.localeCompare(b.full,"es",{sensitivity:"base"});
+        if(f.sort==="views_asc") return (a.views-b.views)||(a.final-b.final)||a.full.localeCompare(b.full,"es",{sensitivity:"base"});
+        if(f.sort==="pay_desc") return (b.final-a.final)||((b.views||0)-(a.views||0))||a.full.localeCompare(b.full,"es",{sensitivity:"base"});
+        if(f.sort==="name_asc") return a.full.localeCompare(b.full,"es",{sensitivity:"base"});
+        if(f.sort==="name_desc") return b.full.localeCompare(a.full,"es",{sensitivity:"base"});
+        return (a.final-b.final)||((b.views||0)-(a.views||0))||a.full.localeCompare(b.full,"es",{sensitivity:"base"});
+      });
+      $("#paymentResultsMetaV400").innerHTML=`<span><b>${rows.length}</b> de ${allRows.length} personas</span><span>Orden: ${f.sort==="views_desc"?"vistas mayor → menor":f.sort==="views_asc"?"vistas menor → mayor":f.sort==="pay_asc"?"pago menor → mayor":f.sort==="pay_desc"?"pago mayor → menor":f.sort==="name_asc"?"nombre A → Z":"nombre Z → A"}</span>`;
       $("#paymentResultsV400").innerHTML = rows.length ? `<div class="payment-table-v400"><table><thead><tr><th>Foto</th><th>Primer nombre</th><th>Seudónimo principal</th><th>Método</th><th>Cuenta de pago</th><th>Titular</th><th>Pago final</th><th>Acciones</th></tr></thead><tbody>${rows.map(row=>`<tr><td>${avatarMarkupV400({...row.profile,names:row.full},"sm")}</td><td><b>${esc(row.first)}</b><small>@${esc(row.report.username||"")}</small></td><td>${esc(row.alias)}</td><td><span class="pay-method-v400">${esc(row.method)}</span></td><td><span class="copy-field-v400">${esc(row.account||"Pendiente")}${row.account?`<button type="button" data-copy-v400="${esc(row.account)}" aria-label="Copiar cuenta">${uiIcon("copy",13)}</button>`:""}</span></td><td><span class="copy-field-v400">${esc(row.holder||"—")}${row.holder?`<button type="button" data-copy-v400="${esc(row.holder)}" aria-label="Copiar titular">${uiIcon("copy",13)}</button>`:""}</span></td><td><span class="pay-final-v400">${money(row.final)}</span></td><td><div class="payment-actions-v400"><button class="btn btn-secondary btn-sm" type="button" data-pay-detail-v400="${row.report.report_id}">Ver detalle</button><button class="btn btn-ghost btn-sm" type="button" data-copy-line-v400="${row.report.report_id}" title="Copiar pago">${uiIcon("copy",14)}</button></div></td></tr>`).join("")}</tbody></table></div><div class="payment-cards-v400">${rows.map(row=>`<article><div class="payment-card-head-v400">${avatarMarkupV400({...row.profile,names:row.full},"md")}<div><strong>${esc(row.full)}</strong><small>${esc(row.alias)}</small></div><span class="pay-method-v400">${esc(row.method)}</span></div><div class="payment-card-data-v400"><span><small>Cuenta</small><b>${esc(row.account||"Pendiente")}</b></span><span><small>Titular</small><b>${esc(row.holder||"—")}</b></span></div><div class="payment-card-total-v400"><span><small>PAGO FINAL</small><strong>${money(row.final)}</strong></span><button class="btn btn-secondary" data-pay-detail-v400="${row.report.report_id}" type="button">Ver detalle</button></div><div class="payment-card-copy-v400">${row.account?`<button type="button" data-copy-v400="${esc(row.account)}">Copiar cuenta</button>`:""}<button type="button" data-copy-line-v400="${row.report.report_id}">Copiar pago</button></div></article>`).join("")}</div>` : '<div class="empty card">No hay pagos con estos filtros.</div>';
       $$('[data-copy-v400]').forEach(button=>button.addEventListener("click",()=>copyText(button.dataset.copyV400)));
       $$('[data-copy-line-v400]').forEach(button=>button.addEventListener("click",()=>{const row=allRows.find(x=>String(x.report.report_id)===String(button.dataset.copyLineV400));if(row)copyText(`${row.method} · ${row.account||"Pendiente"} · ${row.holder||row.full} · ${money(row.final)}`);}));
@@ -6961,8 +7017,8 @@
     const amount=roundMoneyV360(basePay);
     const cfg=settings||{};
     const isRecipient=String(cfg.recipient_user_id||"")===String(state.profile?.id||"");
-    const sent=summary?.status&&summary.status!=="draft";
-    if(cfg.enabled!==false&&cfg.recipient_user_id&&!isRecipient&&sent&&amount>0){
+    const eligibleStatus=paymentDistributionEligibleV421(summary?.status);
+    if(cfg.enabled!==false&&cfg.recipient_user_id&&!isRecipient&&eligibleStatus&&amount>0){
       return roundMoneyV360(Math.max(0,amount-Math.max(0,Number(cfg.minimum_contribution??30))));
     }
     return amount;
@@ -7049,7 +7105,7 @@
     const card=document.createElement("div");card.className="card distribution-settings-v400";
     card.innerHTML=`<div class="card-head"><div><span class="section-eyebrow">DISTRIBUCIÓN ADMINISTRATIVA</span><h2>Distribución de pagos</h2><p>Cada reporte válido genera S/30 de descuento y S/30 de aporte adicional para administración.</p></div><span class="pill ${config.enabled!==false?"pill-green":"pill-yellow"}">${config.enabled!==false?"ACTIVADA":"DESACTIVADA"}</span></div>${config.setup_missing?`<div class="alert alert-warning"><div>⚠️</div><div><strong>Configuración no instalada</strong><p>Falta la tabla payment_distribution_settings.</p></div></div>`:`<form id="distributionSettingsFormV400" class="form-grid compact-form"><label class="full checkbox-label"><input name="enabled" type="checkbox" ${config.enabled!==false?"checked":""}> Distribución administrativa activa</label><label class="full">Administrador receptor<select name="recipient_user_id" required><option value="">Seleccionar…</option>${users.filter(u=>u.active!==false).map(u=>`<option value="${u.user_id}" ${String(u.user_id)===String(config.recipient_user_id||"")?"selected":""}>${esc(`${u.names||u.username||""} ${u.surnames||""}`.trim())} · @${esc(u.username||"")}</option>`).join("")}</select></label><div><span class="field-label-v400">Descuento</span><strong class="fixed-money-v400">S/30</strong></div><div><span class="field-label-v400">Adicional</span><strong class="fixed-money-v400">S/30</strong></div><div class="full actions"><button class="btn btn-primary">Guardar distribución</button></div></form>`}`;
     pane.appendChild(card);
-    $("#distributionSettingsFormV400")?.addEventListener("submit",async event=>{event.preventDefault();const f=Object.fromEntries(new FormData(event.target));if(!f.recipient_user_id)return toast("Selecciona un administrador receptor.","error");showLoading(true);try{await query(state.supabase.from("payment_distribution_settings").update({enabled:f.enabled==="on",minimum_contribution:30}).eq("id",1));await savePaymentDistributionRecipientV360(f.recipient_user_id);toast("Distribución actualizada","success");await renderAdminSettings();}catch(error){toast(errorMessage(error),"error");}finally{showLoading(false);}});
+    $("#distributionSettingsFormV400")?.addEventListener("submit",async event=>{event.preventDefault();const f=Object.fromEntries(new FormData(event.target));if(!f.recipient_user_id)return toast("Selecciona un administrador receptor.","error");showLoading(true);try{await query(state.supabase.rpc("admin_save_payment_distribution_v421",{p_enabled:f.enabled==="on",p_recipient_user_id:f.recipient_user_id}));state.paymentDistributionSettingsV360=null;state.paymentDistributionV360=null;state.myFinalPayCacheV420={};toast("Distribución actualizada","success");await renderAdminSettings();}catch(error){toast(errorMessage(error),"error");}finally{showLoading(false);}});
   }
 
   async function renderAdminPage() {
@@ -7094,7 +7150,7 @@
       if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==="k"){event.preventDefault();openGlobalSearchV400();return;}
       if(!typing&&event.key==="/"){event.preventDefault();openGlobalSearchV400();}
     });
-    if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=4.0.0").catch(()=>null),{once:true});}
+    if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=4.2.1-20260920").catch(()=>null),{once:true});}
   }
   window.addEventListener("DOMContentLoaded",initV400UiShell);
 
@@ -7133,8 +7189,13 @@
 
   function reportDistributionExemptV410(report) {
     if (!report) return false;
+    const reportId = String(report.report_id || report.id || "");
+    const flags = state.paymentDistributionExemptByReportV410 || {};
+    if (reportId && Object.prototype.hasOwnProperty.call(flags, reportId)) {
+      return Boolean(flags[reportId]);
+    }
     if (typeof report.payment_distribution_exempt === "boolean") return report.payment_distribution_exempt;
-    return Boolean(state.paymentDistributionExemptByReportV410?.[report.report_id]);
+    return false;
   }
 
   function buildPaymentDistributionV360(reports = [], settings = null) {
@@ -7150,19 +7211,23 @@
       const original = roundMoneyV360(reportDisplayTotal(report));
       const isRecipient = String(report.user_id || "") === recipientId;
       const exempt = reportDistributionExemptV410(report);
-      const reportSent = report.status && report.status !== "draft";
-      const valid = enabled && !isRecipient && !exempt && original > 0 && reportSent;
-      const contribution = valid ? roundMoneyV360(Math.min(original, discount)) : 0;
+      const eligibleStatus = paymentDistributionEligibleV421(report.status);
+      // Regla V4.2.4: la excepción solo evita el descuento del clipero.
+      // El aporte administrativo de S/30 se mantiene si el clipero tiene pago > 0.
+      const adminEligible = enabled && !isRecipient && original > 0 && eligibleStatus;
+      const deductionEligible = adminEligible && !exempt;
+      const contribution = deductionEligible ? roundMoneyV360(Math.min(original, discount)) : 0;
       return {
         report_id: report.report_id,
         user_id: report.user_id,
         original,
         contribution,
-        admin_extra: valid ? adminExtra : 0,
+        admin_extra: adminEligible ? adminExtra : 0,
         final: roundMoneyV360(original - contribution),
         is_recipient: isRecipient,
         exempt,
-        counted_valid: valid,
+        counted_valid: adminEligible,
+        counted_discount: deductionEligible,
       };
     });
 
@@ -7180,8 +7245,8 @@
     if (reportDistributionExemptV410(summary)) return amount;
     const cfg = settings || {};
     const isRecipient = String(cfg.recipient_user_id || "") === String(state.profile?.id || "");
-    const sent = summary?.status && summary.status !== "draft";
-    if (cfg.enabled !== false && cfg.recipient_user_id && !isRecipient && sent && amount > 0) {
+    const eligibleStatus = paymentDistributionEligibleV421(summary?.status);
+    if (cfg.enabled !== false && cfg.recipient_user_id && !isRecipient && eligibleStatus && amount > 0) {
       return roundMoneyV360(Math.max(0, amount - Math.max(0, Number(cfg.minimum_contribution ?? 30))));
     }
     return amount;
@@ -7295,11 +7360,12 @@
     let reports=await query(state.supabase.from("weekly_report_summary").select("*").eq("week_start",state.adminWeek).order("total_views",{ascending:false}));
     await loadDistributionFlagsV410(reports.map(r=>r.report_id));
     const reportIds=reports.map(r=>r.report_id).filter(Boolean);
-    const [platformRows,data,paymentRules,paymentTotals,distributionSettings,overview]=await Promise.all([
+    const userIds=[...new Set(reports.map(r=>r.user_id).filter(Boolean))];
+    const [platformRows,data,paymentRules,paymentTotals,distributionSettings,overview,profiles]=await Promise.all([
       reportIds.length?query(state.supabase.from("weekly_report_platform_summary").select("*").in("report_id",reportIds)):Promise.resolve([]),
-      loadAdminVideoCenterData(reports,true),query(state.supabase.from("platform_payment_rules").select("*")).catch(()=>[]),fetchAdminPeriodPaymentTotalsV280(state.adminWeek),fetchPaymentDistributionSettingsV360(),query(state.supabase.from("admin_clipper_overview").select("user_id,role,active,username,names,surnames").limit(600)).catch(()=>[])
+      loadAdminVideoCenterData(reports,true),query(state.supabase.from("platform_payment_rules").select("*")).catch(()=>[]),fetchAdminPeriodPaymentTotalsV280(state.adminWeek),fetchPaymentDistributionSettingsV360(),query(state.supabase.from("admin_clipper_overview").select("user_id,role,active,username,names,surnames").limit(600)).catch(()=>[]),userIds.length?query(state.supabase.from("profiles").select("id,avatar_url,names,surnames,username").in("id",userIds)).catch(()=>[]):Promise.resolve([])
     ]);
-    state.adminReportIds=reportIds;state.adminPlatformRows=platformRows||[];state.platformRuleMap=Object.fromEntries((paymentRules||[]).map(rule=>[rule.platform,rule]));state.paymentTotalsV280=Object.fromEntries((paymentTotals||[]).map(row=>[row.report_id,row]));state.paymentDistributionSettingsV360=distributionSettings||{};state.paymentDistributionV360=buildPaymentDistributionV360(reports,state.paymentDistributionSettingsV360);
+    state.adminReportIds=reportIds;state.adminPlatformRows=platformRows||[];state.platformRuleMap=Object.fromEntries((paymentRules||[]).map(rule=>[rule.platform,rule]));state.paymentTotalsV280=Object.fromEntries((paymentTotals||[]).map(row=>[row.report_id,row]));state.paymentDistributionSettingsV360=distributionSettings||{};state.paymentDistributionV360=buildPaymentDistributionV360(reports,state.paymentDistributionSettingsV360);state.profileAvatarByUserV422=Object.fromEntries((profiles||[]).map(profile=>[String(profile.id),profile]));
     const selectedPeriod=periods.find(p=>p.start_date===state.adminWeek)||{start_date:state.adminWeek};
     const activeClippers=(overview||[]).filter(u=>u.role==="clipper"&&u.active!==false);
     const reportsReceived=reports.filter(r=>r.status&&r.status!=="draft").length;
@@ -7308,7 +7374,7 @@
     $("#content").innerHTML=`<section class="dashboard-head-v400"><div><span class="section-eyebrow">${selectedPeriod?.is_active?"PERÍODO ACTIVO":"PERÍODO SELECCIONADO"}</span><h2>Buenas ${new Date().getHours()<12?"mañanas":new Date().getHours()<19?"tardes":"noches"}</h2><p>${esc(periodRangeLabel(selectedPeriod)||state.adminWeek)}</p></div><label class="period-picker-v400">${uiIcon("history",15)}<select id="dashboardPeriodV400">${periods.map(p=>`<option value="${p.start_date}" ${p.start_date===state.adminWeek?"selected":""}>${esc(p.name||periodRangeLabel(p))}${p.is_active?" · ACTIVO":""}</option>`).join("")}</select></label></section>
       <section class="kpi-grid-v400"><article><small>CLIPEROS ACTIVOS</small><strong>${activeClippers.length||reports.length}</strong><span>cliperos</span></article><article><small>REPORTES RECIBIDOS</small><strong>${reportsReceived}/${Math.max(activeClippers.length,reports.length)}</strong><span>del período</span></article><article><small>VIDEOS</small><strong>${num((data.videos||[]).length)}</strong><span>registrados</span></article><article class="money"><small>PAGO PROYECTADO</small><strong>${money(projected)}</strong><span>pago final total</span></article></section>
       <section class="card dashboard-reports-v410"><div class="section-title-row"><div><span class="section-eyebrow">REPORTES</span><h3>Estado del equipo</h3></div><button class="btn btn-ghost btn-sm" data-dashboard-go-v410="reports">Ver todos</button></div>${adminReportsTable(reports.slice(0,12))}</section>
-      <section class="card top-videos-v410"><div class="section-title-row"><div><span class="section-eyebrow">TOP 6 DEL PERÍODO</span><h3>Contenido con más vistas</h3></div><button class="btn btn-ghost btn-sm" data-dashboard-go-v410="videos">Ver ranking completo</button></div><div class="top-video-grid-v410">${topVideos.map((v,i)=>`<a href="${esc(v.video_url)}" target="_blank" rel="noopener"><div class="top-video-preview-v410">${topVideoPreviewV410(v)}<b>${i+1}</b></div><div class="top-video-copy-v410"><strong>${esc(v.account_name||v.clipper_name||platformLabel(v.platform))}</strong><small>${esc(v.clipper_name||platformLabel(v.platform))}</small><em>${num(v.views||0)} vistas</em></div></a>`).join("")||'<div class="empty">Todavía no hay videos.</div>'}</div></section>
+      <section class="card top-videos-v410"><div class="section-title-row"><div><span class="section-eyebrow">TOP 6 DEL PERÍODO</span><h3>Contenido con más vistas</h3></div><button class="btn btn-ghost btn-sm" data-dashboard-go-v410="videos">Ver ranking completo</button></div><div class="top-video-grid-v410">${topVideos.map((v,i)=>`<a href="${esc(v.video_url)}" target="_blank" rel="noopener"><div class="top-video-preview-v410">${topVideoPreviewV410(v)}<b>${i+1}</b></div><div class="top-video-copy-v410"><strong>${esc(v.account_name||v.clipper_name||platformLabel(v.platform))}</strong><small>${esc(v.clipper_name||platformLabel(v.platform))}</small>${topVideoOwnerBadgeV423(v)}<em>${num(v.views||0)} vistas</em></div></a>`).join("")||'<div class="empty">Todavía no hay videos.</div>'}</div></section>
       <section class="quick-actions-v400 quick-actions-v420"><button data-quick-v410="search">${uiIcon("search",17)}<span>Buscar clipero</span></button><button data-quick-v410="ideas">${uiIcon("megaphone",17)}<span>Ver ideas</span></button><button data-quick-v410="support">${uiIcon("shield",17)}<span>Soporte</span></button><button data-quick-v410="payments">${uiIcon("wallet",17)}<span>Ir a pagos</span></button><button data-quick-v410="metrics">${uiIcon("sync",17)}<span>Actualizar métricas</span></button></section>`;
     $("#dashboardPeriodV400")?.addEventListener("change",event=>{state.adminWeek=event.target.value;state.adminVideoData=null;renderAdminDashboardV400();});
     $$('[data-dashboard-go-v410]').forEach(b=>b.addEventListener("click",()=>navigate(b.dataset.dashboardGoV410)));
@@ -7322,7 +7388,7 @@
     const panel=document.createElement("section");panel.className="distribution-exception-v410";
     panel.innerHTML=`<div><span class="section-eyebrow">PAGO</span><h3>Excepción de distribución</h3><p>Actívala cuando este clipero deba recibir íntegro su pago. El histórico cerrado no se modifica.</p></div><label class="setting-switch"><input id="distributionExemptV410" type="checkbox" ${rules?.payment_distribution_exempt?"checked":""}><div><b>Exento del descuento</b><span>Aplica al período activo y a los siguientes.</span></div></label><label>Motivo interno opcional<textarea id="distributionExemptReasonV410" rows="2" maxlength="500" placeholder="Solo administración">${esc(rules?.payment_distribution_exempt_reason||"")}</textarea></label><button id="saveDistributionExemptV410" class="btn btn-secondary" type="button">Guardar excepción</button>`;
     box.appendChild(panel);
-    $("#saveDistributionExemptV410")?.addEventListener("click",async()=>{showLoading(true);try{const exempt=$("#distributionExemptV410")?.checked===true;const reason=$("#distributionExemptReasonV410")?.value.trim()||null;await query(state.supabase.rpc("admin_set_payment_distribution_exemption",{p_user_id:profile.id,p_exempt:exempt,p_reason:reason}));toast(exempt?"Excepción activada":"Excepción desactivada","success");await renderPage(true);}catch(error){toast(errorMessage(error),"error");}finally{showLoading(false);}});
+    $("#saveDistributionExemptV410")?.addEventListener("click",async()=>{showLoading(true);try{const exempt=$("#distributionExemptV410")?.checked===true;const reason=$("#distributionExemptReasonV410")?.value.trim()||null;await query(state.supabase.rpc("admin_set_payment_distribution_exemption",{p_user_id:profile.id,p_exempt:exempt,p_reason:reason}));state.paymentDistributionExemptByReportV410={};state.paymentDistributionV360=null;state.myFinalPayCacheV420={};toast(exempt?"Excepción activada":"Excepción desactivada","success");await renderPage(true);}catch(error){toast(errorMessage(error),"error");}finally{showLoading(false);}});
   }
 
   function reportAccountFiltersV410(videos,accounts,selected="all") {
@@ -7836,7 +7902,7 @@
     window.clipcontrolDebugFacebook = (url) => invokeProcessor({ action:"facebook_probe", url });
     window.clipcontrolDebugFrontend = () => ({
       version: CLIPCONTROL_FRONTEND_VERSION,
-      source: "app-v4.2.0-professional-responsive.js",
+      source: "app-v4.2.4-payment-distribution-rule-fix.js",
       scripts: [...document.scripts].map((script) => script.src).filter(Boolean),
       samples: {
         facebook_reel: videoUrlValidation("https://www.facebook.com/reel/1579243183893033"),

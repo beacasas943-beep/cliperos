@@ -1756,3 +1756,33 @@ body.modal-open-v400{overflow:hidden}
 
 @media(max-width:1100px){.quick-actions-v420{grid-template-columns:repeat(3,1fr)!important}.top-video-grid-v410{grid-template-columns:repeat(3,minmax(0,1fr))!important}.kpi-grid-v400{grid-template-columns:repeat(2,1fr)!important}}
 @media(max-width:680px){.dashboard-head-v400{align-items:flex-start!important}.dashboard-head-v400 h2{font-size:21px!important}.period-picker-v400{width:100%;margin-top:7px}.period-picker-v400 select{width:100%}.kpi-grid-v400{grid-template-columns:1fr 1fr!important;gap:6px!important}.kpi-grid-v400 article{padding:11px 10px!important}.kpi-grid-v400 strong{font-size:19px!important}.dashboard-reports-v410,.top-videos-v410{padding:12px!important}.top-video-grid-v410{grid-template-columns:1fr!important}.quick-actions-v420{grid-template-columns:1fr 1fr!important}.quick-actions-v420 button:last-child{grid-column:1/-1}.quick-actions-v420 button{min-height:44px!important}}
+
+
+/* ClipControl 4.2.2 · identidad visual en Inicio/Reportes */
+.report-person-v422{display:flex;align-items:center;gap:9px;min-width:0}
+.report-person-v422>div{min-width:0}
+.report-person-v422 strong,.report-person-v422 small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.report-person-v422 .profile-avatar{flex:0 0 auto}
+.mobile-report-head-v224 .report-person-v422{flex:1;min-width:0}
+
+
+/* v4.2.3 avatar normalization and top-video owner chips */
+.profile-avatar-sm{width:42px;height:42px;font-size:11px}
+.profile-avatar-md{width:48px;height:48px;font-size:12px}
+.profile-avatar-lg{width:60px;height:60px;font-size:17px}
+.profile-avatar-xl{width:92px;height:92px;font-size:24px;border:4px solid rgba(255,255,255,.75);box-shadow:0 14px 38px rgba(15,23,42,.18)}
+.report-person-v422{display:flex!important;align-items:center;gap:10px;min-width:0}
+.report-person-v422>div{min-width:0}
+.report-person-v422 strong,.report-person-v422 small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.report-person-v422 .profile-avatar{flex:0 0 auto}
+.top-video-owner-v423{display:flex;align-items:center;gap:6px;margin-top:6px;min-width:0}
+.top-video-owner-v423 .profile-avatar{width:20px;height:20px;font-size:7px;box-shadow:none}
+.top-video-owner-v423>span{min-width:0;display:grid;gap:1px}
+.top-video-owner-v423 b,.top-video-owner-v423 small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.1}
+.top-video-owner-v423 b{font-size:9px;color:var(--v400-text);font-weight:800}
+.top-video-owner-v423 small{font-size:7.5px;color:var(--v400-muted)}
+.leader-copy-v300 .top-video-owner-v423{margin-top:5px}
+@media(max-width:680px){
+  .top-video-owner-v423 b{font-size:8px}
+  .top-video-owner-v423 small{font-size:7px}
+}
