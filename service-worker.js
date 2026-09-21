@@ -1,4 +1,4 @@
-const CACHE_NAME = "clipcontrol-static-v424-payment-distribution-rule";
+const CACHE_NAME = "clipcontrol-static-v430-metric-review-ranking";
 const STATIC_ASSETS = [
   "./",
   "./index.html",

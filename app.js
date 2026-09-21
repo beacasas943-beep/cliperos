@@ -1,7 +1,7 @@
 (() => {
-  const CLIPCONTROL_FRONTEND_VERSION = "4.2.4-payment-distribution-rule-fix";
+  const CLIPCONTROL_FRONTEND_VERSION = "4.3.0-metric-review-ranking-polish";
   window.CLIPCONTROL_FRONTEND_VERSION = CLIPCONTROL_FRONTEND_VERSION;
-  document.documentElement.dataset.clipcontrolUi = "4.2.0-professional-responsive";
+  document.documentElement.dataset.clipcontrolUi = "4.3.0-metric-review-ranking";
   "use strict";
 
   const PLATFORMS = {
@@ -745,6 +745,41 @@
     return `<span class="metric-quality metric-quality-${bucket}"><i></i>${metricBucketLabel(bucket)}</span>`;
   }
 
+
+  function metricReviewBucketV430(video = {}) {
+    if (Number(video.manual_override_count || 0) > 0) return "manual";
+    return metricBucket(video);
+  }
+
+  function metricReviewLabelV430(bucket) {
+    return bucket === "manual" ? "Manual activa" : metricBucketLabel(bucket);
+  }
+
+  function metricReviewBadgeV430(video = {}) {
+    const bucket = metricReviewBucketV430(video);
+    return `<span class="metric-quality metric-quality-${bucket}"><i></i>${metricReviewLabelV430(bucket)}</span>`;
+  }
+
+  async function loadMetricReviewMetaV430(data) {
+    const ids = (data?.videos || []).map(video => video.id).filter(Boolean);
+    if (!ids.length) return data;
+    let overrides = [];
+    try {
+      overrides = await query(state.supabase.from("video_metric_overrides").select("id,video_id,metric_name,manual_value,automatic_value,latest_automatic_value,reason,support_ticket_id,created_at,status").in("video_id",ids).eq("status","active"));
+    } catch (_) { overrides = []; }
+    const byVideo = {};
+    for (const row of overrides || []) {
+      if (!byVideo[row.video_id]) byVideo[row.video_id] = [];
+      byVideo[row.video_id].push(row);
+    }
+    for (const video of data.videos || []) {
+      video.metric_overrides_v430 = byVideo[video.id] || [];
+      video.manual_override_count = video.metric_overrides_v430.length;
+      video.metric_review_bucket = metricReviewBucketV430(video);
+    }
+    return data;
+  }
+
   function youtubeVideoIdFromUrl(value) {
     try {
       const url = new URL(value);
@@ -801,7 +836,7 @@
       if (filters.clipper && filters.clipper !== "all" && video.user_id !== filters.clipper) return false;
       if (filters.account && filters.account !== "all" && video.account_id !== filters.account) return false;
       if (filters.platform && filters.platform !== "all" && video.platform !== filters.platform) return false;
-      if (filters.status && filters.status !== "all" && metricBucket(video) !== filters.status) return false;
+      if (filters.status && filters.status !== "all" && (video.metric_review_bucket || metricBucket(video)) !== filters.status) return false;
       return !search || `${video.clipper_name} ${video.username} ${video.account_name} ${video.external_title || ""} ${video.external_author || ""} ${video.video_url || ""} ${video.platform || ""} ${video.position || ""}`.toLowerCase().includes(search);
     });
   }
@@ -815,21 +850,29 @@
     const checkbox = selectable ? `<label class="video-row-check"><input type="checkbox" data-metric-select="${video.id}" ${state.metricSelected?.has(video.id)?"checked":""}><span></span></label>` : "";
     const title = video.external_title || `Video ${video.position || ""}`;
     const urlLabel = String(video.video_url || "").replace(/^https?:\/\//i, "");
-    return `<article class="global-video-card global-video-row metric-card-${metricBucket(video)}" data-video-views="${Number(video.views||0)}">
+    const bucket = video.metric_review_bucket || metricReviewBucketV430(video);
+    const stateText = Number(video.manual_override_count||0)>0
+      ? `<span class="video-row-manual-v430">${uiIcon("check",13)} ${video.manual_override_count} corrección${Number(video.manual_override_count)===1?"":"es"} manual${Number(video.manual_override_count)===1?"":"es"}</span>`
+      : video.metrics_error
+        ? `<span class="video-row-warning" title="${esc(video.metrics_error)}">${uiIcon("alert",13)} ${esc(video.metrics_error)}</span>`
+        : `<span class="video-row-source">${uiIcon("activity",13)} ${esc(metricAvailabilityLabel(video) || "Lectura disponible")}</span>`;
+    const reviewAction = selectable ? `<button class="btn btn-gold btn-sm" type="button" data-review-metrics-v430="${video.id}">Revisar</button>` : "";
+    return `<article class="global-video-card global-video-row metric-card-${bucket}" data-video-views="${Number(video.views||0)}">
       ${checkbox}
       <div class="video-row-thumb">${preview}<span class="video-row-platform">${platformLogo(video.platform)}</span></div>
-      <div class="video-row-main"><div class="video-row-title"><strong title="${esc(title)}">${esc(title)}</strong>${metricBucketBadge(video)}</div><p>${esc(video.clipper_name)} · @${esc(video.username)} · ${esc(video.account_name)}</p><a class="video-row-url" href="${esc(video.video_url)}" target="_blank" rel="noopener" title="${esc(video.video_url)}">${esc(urlLabel)}</a></div>
+      <div class="video-row-main"><div class="video-row-title"><strong title="${esc(title)}">${esc(title)}</strong>${metricReviewBadgeV430(video)}</div><p>${esc(video.clipper_name)} · @${esc(video.username)} · ${esc(video.account_name)}</p><a class="video-row-url" href="${esc(video.video_url)}" target="_blank" rel="noopener" title="${esc(video.video_url)}">${esc(urlLabel)}</a></div>
       <div class="video-row-metric"><span>Vistas</span><b>${num(video.views)}</b></div>
       <div class="video-row-metric"><span>Likes</span><b>${num(video.likes)}</b></div>
       <div class="video-row-metric"><span>Coment.</span><b>${num(video.comments)}</b></div>
       <div class="video-row-metric"><span>Comp.</span><b>${num(video.shares)}</b></div>
-      <div class="video-row-state">${video.metrics_error ? `<span class="video-row-warning" title="${esc(video.metrics_error)}">${uiIcon("alert",13)} ${esc(video.metrics_error)}</span>` : `<span class="video-row-source">${uiIcon("activity",13)} ${esc(metricAvailabilityLabel(video) || "Lectura disponible")}</span>`}</div>
-      <div class="video-row-actions"><a class="btn btn-ghost btn-sm" href="${esc(video.video_url)}" target="_blank" rel="noopener">Abrir</a><button class="btn btn-secondary btn-sm" data-admin-report="${video.report_id}">Reporte ${uiIcon("arrow",13)}</button></div>
+      <div class="video-row-state">${stateText}</div>
+      <div class="video-row-actions">${reviewAction}<a class="btn btn-ghost btn-sm" href="${esc(video.video_url)}" target="_blank" rel="noopener">Abrir</a><button class="btn btn-secondary btn-sm" data-admin-report="${video.report_id}">Reporte ${uiIcon("arrow",13)}</button></div>
     </article>`;
   }
 
   function bindAdminVideoCards() {
     $$('[data-admin-report]').forEach(button => button.addEventListener("click", () => openAdminReportDetail(button.dataset.adminReport)));
+    $$('[data-review-metrics-v430]').forEach(button => button.addEventListener("click", () => openMetricReviewV430(button.dataset.reviewMetricsV430)));
   }
 
   async function renderAdminVideoCenter(force = false) {
@@ -876,20 +919,70 @@
     finally { showLoading(false); }
   }
 
+  async function openMetricReviewV430(videoId) {
+    showLoading(true);
+    try {
+      let data = await loadMetricReviewMetaV430(await loadAdminVideoCenterData(null,false));
+      let video = (data.videos || []).find(row => String(row.id) === String(videoId));
+      if (!video) {
+        const raw = await query(state.supabase.from("videos").select("*").eq("id",videoId).single());
+        video = raw;
+      }
+      const [history,tickets] = await Promise.all([
+        query(state.supabase.from("video_metric_overrides").select("*").eq("video_id",videoId).order("created_at",{ascending:false})).catch(()=>[]),
+        video?.user_id ? query(state.supabase.from("support_tickets").select("id,subject,status,category,video_id,updated_at").eq("user_id",video.user_id).eq("category","metrics").order("updated_at",{ascending:false}).limit(30)).catch(()=>[]) : Promise.resolve([])
+      ]);
+      const activeByMetric = Object.fromEntries((history||[]).filter(row=>row.status==="active").map(row=>[row.metric_name,row]));
+      const labels={views:"Vistas",likes:"Likes",comments:"Comentarios",shares:"Compartidos"};
+      const metricRows=Object.entries(labels).map(([key,label])=>{
+        const active=activeByMetric[key];
+        return `<div class="metric-review-row-v430 ${active?"has-override":""}"><label class="metric-review-check-v430"><input type="checkbox" data-metric-override-check-v430="${key}" ${active?"":""}><span></span></label><div><b>${label}</b><small>${active?`Automático guardado: ${num(active.latest_automatic_value??active.automatic_value??0)} · Manual activo`:"Lectura automática actual"}</small></div><input data-metric-override-value-v430="${key}" type="number" min="0" step="1" value="${Number(active?.manual_value ?? video?.[key] ?? 0)}"><strong>${num(video?.[key]||0)}</strong>${active?`<button type="button" class="btn btn-ghost btn-sm" data-revoke-metric-v430="${key}">Volver automático</button>`:""}</div>`;
+      }).join("");
+      const ticketOptions=(tickets||[]).map(ticket=>`<option value="${ticket.id}">${esc(ticket.subject)} · ${esc(SUPPORT_STATUS_V420[ticket.status]||ticket.status)}</option>`).join("");
+      const historyHtml=(history||[]).slice(0,12).map(row=>`<div class="metric-history-item-v430"><span class="${row.status==="active"?"active":""}">${row.status==="active"?"ACTIVA":"HISTÓRICA"}</span><b>${esc(labels[row.metric_name]||row.metric_name)}: ${num(row.manual_value)}</b><small>Auto inicial ${num(row.automatic_value)}${row.latest_automatic_value!==null&&row.latest_automatic_value!==undefined?` · último auto ${num(row.latest_automatic_value)}`:""} · ${dateTimeLabel(row.created_at)}</small><p>${esc(row.reason||"")}</p></div>`).join("");
+      openModal(`<div class="modal-head"><div><span class="section-eyebrow">REVISIÓN DE MÉTRICAS</span><h2>${esc(video.external_title||`Video ${video.position||""}`)}</h2><p>${esc(video.clipper_name||video.username||"")} · ${esc(video.account_name||platformLabel(video.platform))}</p></div><button class="modal-close" data-metric-review-close-v430>×</button></div><div class="modal-body metric-review-v430"><section class="metric-review-source-v430"><div>${platformLogo(video.platform)}<span><b>${esc(platformLabel(video.platform))}</b><small>${esc(video.metrics_source||"Fuente automática")}</small></span></div><span>${metricReviewBadgeV430(video)}</span><a href="${esc(video.video_url)}" target="_blank" rel="noopener">Abrir publicación</a></section><section class="metric-review-actions-v430"><button id="metricReviewRetryV430" class="btn btn-secondary" type="button">${uiIcon("sync",15)} Reintentar automático</button><small>Si existe una corrección manual activa, la sincronización no la pisará; solo actualizará la última lectura automática detectada.</small></section><section class="metric-review-grid-v430">${metricRows}</section><div class="form-grid compact-form metric-review-form-v430"><label>Ticket de soporte <small>opcional si la fila ya tiene incidencia</small><select id="metricReviewTicketV430"><option value="">Sin ticket vinculado</option>${ticketOptions}</select></label><label>Evidencia / enlace <small>opcional</small><input id="metricReviewEvidenceV430" type="url" placeholder="https://..."></label><label class="full">Motivo de la corrección<textarea id="metricReviewReasonV430" rows="3" placeholder="Ej.: TikTok no expone las vistas correctas y se verificó manualmente."></textarea></label></div><details class="metric-review-history-v430" ${history.length?"":"hidden"}><summary>Historial de correcciones (${history.length})</summary><div>${historyHtml}</div></details></div><div class="modal-foot"><span class="small muted">Las correcciones quedan auditadas y son reversibles.</span><button class="btn btn-gold" id="metricReviewApplyV430">Aplicar corrección</button></div>`,"large",layer=>{
+        $$('[data-metric-review-close-v430]',layer).forEach(b=>b.addEventListener("click",closeModal));
+        $("#metricReviewRetryV430",layer)?.addEventListener("click",async()=>{showLoading(true);try{await syncVideoMetrics(videoId,true);state.adminVideoData=null;closeModal();toast("Lectura automática reintentada","success");await renderMetricInbox(true);}finally{showLoading(false);}});
+        $$('[data-revoke-metric-v430]',layer).forEach(button=>button.addEventListener("click",async()=>{const metric=button.dataset.revokeMetricV430;if(!confirm(`¿Volver ${labels[metric]} a la última lectura automática?`))return;showLoading(true);try{await query(state.supabase.rpc("admin_revoke_metric_override_v430",{p_video_id:videoId,p_metric_name:metric}));state.adminVideoData=null;closeModal();toast("Corrección manual retirada","success");await renderMetricInbox(true);}catch(error){toast(errorMessage(error),"error");}finally{showLoading(false);}}));
+        $("#metricReviewApplyV430",layer)?.addEventListener("click",async()=>{
+          const selected=$$('[data-metric-override-check-v430]:checked',layer).map(input=>input.dataset.metricOverrideCheckV430);
+          if(!selected.length)return toast("Selecciona al menos una métrica para corregir.","error");
+          const reason=$("#metricReviewReasonV430",layer)?.value.trim()||"";
+          if(!reason)return toast("Indica el motivo de la corrección.","error");
+          const ticket=$("#metricReviewTicketV430",layer)?.value||null;
+          if(!ticket && metricBucket(video)==="ok" && !Number(video.manual_override_count||0)) return toast("Esta lectura no tiene incidencia. Vincula un ticket de métricas para aplicar una corrección manual.","error");
+          const evidence=$("#metricReviewEvidenceV430",layer)?.value.trim()||null;
+          showLoading(true);
+          try{
+            for(const metric of selected){
+              const field=layer.querySelector(`[data-metric-override-value-v430="${metric}"]`);
+              const value=Number(field?.value);
+              if(!Number.isFinite(value)||value<0)throw new Error(`Valor inválido para ${labels[metric]}.`);
+              await query(state.supabase.rpc("admin_apply_metric_override_v430",{p_video_id:videoId,p_metric_name:metric,p_manual_value:Math.round(value),p_reason:reason,p_support_ticket_id:ticket,p_evidence_url:evidence}));
+            }
+            state.adminVideoData=null;closeModal();toast("Corrección manual aplicada y auditada","success");await renderMetricInbox(true);
+          }catch(error){toast(errorMessage(error),"error");}finally{showLoading(false);}
+        });
+      });
+    } catch(error) { toast(errorMessage(error),"error"); }
+    finally { showLoading(false); }
+  }
+
   async function renderMetricInbox(force = false) {
-    setHeader("Bandeja de métricas", "Busca incidencias y reintenta solo lo necesario");
-    const data = await loadAdminVideoCenterData(null, force);
+    setHeader("Bandeja de métricas", "Incidencias, revisión y correcciones auditadas");
+    const data = await loadMetricReviewMetaV430(await loadAdminVideoCenterData(null, force));
     state.metricSelected = state.metricSelected || new Set();
     state.metricFilters = state.metricFilters || { search:"", platform:"all", clipper:"all", status:"all" };
     if (state.metricFilters.search === undefined) state.metricFilters.search = "";
-    const baseIssues = data.videos.filter(video => metricBucket(video) !== "ok");
+    const baseIssues = data.videos.filter(video => metricReviewBucketV430(video) !== "ok");
     const issues = adminVideoFilterRows(baseIssues, state.metricFilters).sort((a,b)=>Number(b.views||0)-Number(a.views||0)||Number(b.likes||0)-Number(a.likes||0));
-    const errors = baseIssues.filter(video=>metricBucket(video)==="error").length;
-    const partial = baseIssues.filter(video=>metricBucket(video)==="partial").length;
-    const pending = baseIssues.filter(video=>["pending","syncing"].includes(metricBucket(video))).length;
+    const errors = baseIssues.filter(video=>metricReviewBucketV430(video)==="error").length;
+    const partial = baseIssues.filter(video=>metricReviewBucketV430(video)==="partial").length;
+    const pending = baseIssues.filter(video=>["pending","syncing"].includes(metricReviewBucketV430(video))).length;
+    const manual = baseIssues.filter(video=>metricReviewBucketV430(video)==="manual").length;
     const clippers = [...new Map(baseIssues.map(video=>[video.user_id,{id:video.user_id,name:video.clipper_name}])).values()].sort((a,b)=>a.name.localeCompare(b.name,"es"));
-    $("#content").innerHTML = `<section class="metric-inbox-hero"><div><span class="section-eyebrow">CONTROL DE CALIDAD</span><h2>${baseIssues.length ? `${baseIssues.length} lecturas requieren atención` : "Métricas al día"}</h2><p>Vista en filas para revisar rápido título, enlace, métricas y estado.</p></div><div class="metric-inbox-counts"><span class="danger"><b>${errors}</b> errores</span><span class="warning"><b>${partial}</b> parciales</span><span class="neutral"><b>${pending}</b> pendientes</span></div></section>
-      <section class="metric-batch-bar metric-batch-bar-v270"><div class="metric-search-control video-search-control">${uiIcon("activity",14)}<input id="metricSearchInput" value="${esc(state.metricFilters.search)}" placeholder="Buscar por título, link, clipero o cuenta"></div><div class="metric-batch-filters"><select id="metricPlatformFilter"><option value="all">Todas las redes</option>${Object.keys(PLATFORMS).map(platform=>`<option value="${platform}" ${state.metricFilters.platform===platform?"selected":""}>${platformLabel(platform)}</option>`).join("")}</select><select id="metricClipperFilter"><option value="all">Todos los cliperos</option>${clippers.map(item=>`<option value="${item.id}" ${state.metricFilters.clipper===item.id?"selected":""}>${esc(item.name)}</option>`).join("")}</select><select id="metricStatusFilter"><option value="all">Toda incidencia</option>${["error","partial","pending","syncing"].map(status=>`<option value="${status}" ${state.metricFilters.status===status?"selected":""}>${metricBucketLabel(status)}</option>`).join("")}</select></div><div class="metric-batch-actions"><button id="selectVisibleMetrics" class="btn btn-ghost btn-sm">Seleccionar visibles</button><button id="retrySelectedMetrics" class="btn btn-primary btn-sm">${uiIcon("sync",14)} Reintentar seleccionados</button></div></section>
+    $("#content").innerHTML = `<section class="metric-inbox-hero metric-inbox-hero-v430"><div><span class="section-eyebrow">CONTROL DE CALIDAD</span><h2>${baseIssues.length ? `${baseIssues.length} lecturas requieren atención` : "Métricas al día"}</h2><p>Usa el reintento automático primero. Si la plataforma sigue fallando, revisa y corrige solo la métrica afectada.</p></div><div class="metric-inbox-counts"><span class="danger"><b>${errors}</b> errores</span><span class="warning"><b>${partial}</b> parciales</span><span class="neutral"><b>${pending}</b> pendientes</span><span class="manual"><b>${manual}</b> manuales</span></div></section>
+      <section class="metric-batch-bar metric-batch-bar-v270"><div class="metric-search-control video-search-control">${uiIcon("activity",14)}<input id="metricSearchInput" value="${esc(state.metricFilters.search)}" placeholder="Buscar por título, link, clipero o cuenta"></div><div class="metric-batch-filters"><select id="metricPlatformFilter"><option value="all">Todas las redes</option>${Object.keys(PLATFORMS).map(platform=>`<option value="${platform}" ${state.metricFilters.platform===platform?"selected":""}>${platformLabel(platform)}</option>`).join("")}</select><select id="metricClipperFilter"><option value="all">Todos los cliperos</option>${clippers.map(item=>`<option value="${item.id}" ${state.metricFilters.clipper===item.id?"selected":""}>${esc(item.name)}</option>`).join("")}</select><select id="metricStatusFilter"><option value="all">Toda incidencia</option>${["error","partial","pending","syncing","manual"].map(status=>`<option value="${status}" ${state.metricFilters.status===status?"selected":""}>${metricReviewLabelV430(status)}</option>`).join("")}</select></div><div class="metric-batch-actions"><button id="selectVisibleMetrics" class="btn btn-ghost btn-sm">Seleccionar visibles</button><button id="retrySelectedMetrics" class="btn btn-primary btn-sm">${uiIcon("sync",14)} Reintentar seleccionados</button></div></section>
       <div class="filter-result-line"><span><b>${issues.length}</b> incidencias visibles · <b id="metricSelectedCount">${state.metricSelected.size}</b> seleccionadas</span><button id="retryAllIssues" class="btn btn-secondary btn-sm">Reintentar visibles</button></div>
       <section class="global-video-grid global-video-list metric-inbox-grid">${issues.map(video=>adminVideoCard(video,true)).join("") || `<div class="metric-clean-state"><span>${uiIcon("check",30)}</span><h3>Todo limpio</h3><p>No hay incidencias con estos filtros.</p></div>`}</section>`;
     const rerender=()=>renderMetricInbox(false);
@@ -5657,6 +5750,7 @@
 
   function errorMessage(error) {
     const msg=error?.message||String(error||"Error inesperado");
+    if(/video_metric_overrides|admin_apply_metric_override_v430|admin_revoke_metric_override_v430|clipcontrol_guard_metric_overrides_v430/i.test(msg))return "Falta ejecutar el SQL 06_CLIPCONTROL_V430_METRIC_REVIEW_CENTER.sql en Supabase.";
     if(/support_tickets|support_ticket_messages|clipcontrol_create_support_ticket_v420|clipcontrol_send_support_message_v420|admin_update_support_ticket_v420|clipcontrol_leaderboard_v420|clipcontrol_my_final_payment_v420|admin_update_branding_v420/i.test(msg))return "Falta ejecutar el SQL 4.2 de ClipControl en Supabase.";
     if(/payment_distribution_settings|admin_set_payment_distribution_recipient_v360/i.test(msg))return "Falta ejecutar SQL 32 de distribución de aportes en Supabase.";
     if(/ACCESS_PAYMENT_REQUIRED|clipper_access_fees|clipper_access_payment_settings|clipcontrol-payment-qr|clipcontrol-payment-proofs|access_fee|access_payment|v320/i.test(msg))return "El acceso para subir clips está bloqueado por el control de pago o falta ejecutar SQL 31 de ClipControl 3.2.";
@@ -6206,16 +6300,23 @@
     const checkbox = selectable ? `<label class="video-row-check" title="Seleccionar"><input type="checkbox" data-metric-select="${video.id}" ${state.metricSelected?.has(video.id)?"checked":""}><span></span></label>` : "";
     const title = video.external_title || `Video ${video.position || ""}`;
     const urlLabel = String(video.video_url || "").replace(/^https?:\/\//i, "");
-    return `<article class="global-video-card global-video-row metric-card-${metricBucket(video)}">
+    const bucket = video.metric_review_bucket || metricReviewBucketV430(video);
+    const stateText = Number(video.manual_override_count||0)>0
+      ? `<span class="video-row-manual-v430">${uiIcon("check",13)} ${video.manual_override_count} corrección${Number(video.manual_override_count)===1?"":"es"} manual${Number(video.manual_override_count)===1?"":"es"}</span>`
+      : video.metrics_error
+        ? `<span class="video-row-warning" title="${esc(video.metrics_error)}">${uiIcon("alert",13)} ${esc(video.metrics_error)}</span>`
+        : `<span class="video-row-source">${uiIcon("check",13)} ${esc(metricAvailabilityLabel(video) || "Verificada")}</span>`;
+    const reviewAction = selectable ? `<button class="btn btn-gold btn-sm" type="button" data-review-metrics-v430="${video.id}">Revisar</button>` : "";
+    return `<article class="global-video-card global-video-row metric-card-${bucket}">
       ${checkbox}
       <a class="video-row-thumb" href="${esc(video.video_url)}" target="_blank" rel="noopener" title="Abrir video">${preview}<span class="video-row-platform">${platformLogo(video.platform)}</span></a>
-      <div class="video-row-main"><div class="video-row-title"><a href="${esc(video.video_url)}" target="_blank" rel="noopener" title="${esc(title)}">${esc(title)}</a>${metricBucketBadge(video)}</div><p>${esc(video.clipper_name)} · ${esc(video.account_name)} · ${esc(platformLabel(video.platform))}</p><a class="video-row-url" href="${esc(video.video_url)}" target="_blank" rel="noopener" title="${esc(video.video_url)}">${esc(urlLabel)}</a></div>
+      <div class="video-row-main"><div class="video-row-title"><a href="${esc(video.video_url)}" target="_blank" rel="noopener" title="${esc(title)}">${esc(title)}</a>${metricReviewBadgeV430(video)}</div><p>${esc(video.clipper_name)} · ${esc(video.account_name)} · ${esc(platformLabel(video.platform))}</p><a class="video-row-url" href="${esc(video.video_url)}" target="_blank" rel="noopener" title="${esc(video.video_url)}">${esc(urlLabel)}</a></div>
       <div class="video-row-metric"><span>Vistas</span><b>${num(video.views)}</b></div>
       <div class="video-row-metric"><span>Likes</span><b>${num(video.likes)}</b></div>
       <div class="video-row-metric"><span>Coment.</span><b>${num(video.comments)}</b></div>
       <div class="video-row-metric"><span>Comp.</span><b>${num(video.shares)}</b></div>
-      <div class="video-row-state">${video.metrics_error ? `<span class="video-row-warning" title="${esc(video.metrics_error)}">${uiIcon("alert",13)} ${esc(video.metrics_error)}</span>` : `<span class="video-row-source">${uiIcon("check",13)} ${esc(metricAvailabilityLabel(video) || "Verificada")}</span>`}</div>
-      <div class="video-row-actions"><a class="btn btn-ghost btn-sm" href="${esc(video.video_url)}" target="_blank" rel="noopener">Abrir</a><button class="btn btn-secondary btn-sm" data-admin-report="${video.report_id}">Reporte</button></div>
+      <div class="video-row-state">${stateText}</div>
+      <div class="video-row-actions">${reviewAction}<a class="btn btn-ghost btn-sm" href="${esc(video.video_url)}" target="_blank" rel="noopener">Abrir</a><button class="btn btn-secondary btn-sm" data-admin-report="${video.report_id}">Reporte</button></div>
     </article>`;
   }
 
@@ -6282,7 +6383,7 @@
 
   async function renderAdminVideoCenterV300(force = false) {
     setHeader("Videos", "Buscar y ordenar");
-    const data = await loadAdminVideoCenterData(null, force);
+    const data = await loadMetricReviewMetaV430(await loadAdminVideoCenterData(null, force));
     state.videoCenterFilters = state.videoCenterFilters || { search:"", clipper:"all", account:"all", platform:"all", status:"all", sort:"views_desc" };
     const filters = state.videoCenterFilters;
     const sortVideos = rows => [...rows].sort((a,b)=>{
@@ -6306,26 +6407,7 @@
   }
 
   async function renderMetricInboxV300(force = false) {
-    setHeader("Métricas", "Incidencias y reintentos");
-    const data = await loadAdminVideoCenterData(null,force);
-    state.metricSelected = state.metricSelected || new Set();
-    state.metricFilters = state.metricFilters || {search:"",platform:"all",clipper:"all",status:"all"};
-    const baseIssues = data.videos.filter(video=>metricBucket(video)!=="ok");
-    const issues = adminVideoFilterRows(baseIssues,state.metricFilters).sort((a,b)=>Number(b.views||0)-Number(a.views||0)||Number(b.likes||0)-Number(a.likes||0));
-    const clippers = [...new Map(baseIssues.map(video=>[video.user_id,{id:video.user_id,name:video.clipper_name}])).values()].sort((a,b)=>a.name.localeCompare(b.name,"es"));
-    const errors=baseIssues.filter(v=>metricBucket(v)==="error").length, partial=baseIssues.filter(v=>metricBucket(v)==="partial").length, pending=baseIssues.filter(v=>["pending","syncing"].includes(metricBucket(v))).length;
-    $("#content").innerHTML = `<section class="metric-summary-v300"><span><b>${errors}</b> errores</span><span><b>${partial}</b> parciales</span><span><b>${pending}</b> pendientes</span></section>
-      <section class="metric-batch-bar metric-batch-bar-v300"><div class="video-search-control">${uiIcon("activity",14)}<input id="metricSearchInput" value="${esc(state.metricFilters.search||"")}" placeholder="Buscar título, link, clipero o cuenta"></div><select id="metricPlatformFilter"><option value="all">Redes</option>${Object.keys(PLATFORMS).map(p=>`<option value="${p}" ${state.metricFilters.platform===p?"selected":""}>${platformLabel(p)}</option>`).join("")}</select><select id="metricClipperFilter"><option value="all">Cliperos</option>${clippers.map(item=>`<option value="${item.id}" ${state.metricFilters.clipper===item.id?"selected":""}>${esc(item.name)}</option>`).join("")}</select><select id="metricStatusFilter"><option value="all">Incidencias</option>${["error","partial","pending","syncing"].map(s=>`<option value="${s}" ${state.metricFilters.status===s?"selected":""}>${metricBucketLabel(s)}</option>`).join("")}</select><button id="retrySelectedMetrics" class="btn btn-primary btn-sm">${uiIcon("sync",14)} Reintentar</button></section>
-      <div class="filter-result-line"><span><b>${issues.length}</b> visibles · <b id="metricSelectedCount">${state.metricSelected.size}</b> seleccionadas</span><div class="actions"><button id="selectVisibleMetrics" class="btn btn-ghost btn-sm">Seleccionar visibles</button><button id="retryAllIssues" class="btn btn-secondary btn-sm">Reintentar visibles</button></div></div>
-      <section class="global-video-grid global-video-list metric-inbox-grid global-video-list-v300">${issues.map(video=>adminVideoCard(video,true)).join("")||'<div class="metric-clean-state"><span>✓</span><h3>Todo limpio</h3></div>'}</section>`;
-    const rerender=()=>renderMetricInboxV300(false);
-    $("#metricSearchInput")?.addEventListener("input",debounce(e=>{state.metricFilters.search=e.target.value;rerender();},220));
-    [["metricPlatformFilter","platform"],["metricClipperFilter","clipper"],["metricStatusFilter","status"]].forEach(([id,key])=>$("#"+id)?.addEventListener("change",e=>{state.metricFilters[key]=e.target.value;rerender();}));
-    $$('[data-metric-select]').forEach(input=>input.addEventListener("change",()=>{input.checked?state.metricSelected.add(input.dataset.metricSelect):state.metricSelected.delete(input.dataset.metricSelect);$("#metricSelectedCount").textContent=state.metricSelected.size;}));
-    $("#selectVisibleMetrics")?.addEventListener("click",()=>{issues.forEach(v=>state.metricSelected.add(v.id));rerender();});
-    $("#retrySelectedMetrics")?.addEventListener("click",()=>retryMetricBatch([...state.metricSelected]));
-    $("#retryAllIssues")?.addEventListener("click",()=>retryMetricBatch(issues.map(v=>v.id)));
-    bindAdminVideoCards();
+    return renderMetricInbox(force);
   }
 
   function clipperMotivationMarkupV300(motivation) {
@@ -7150,7 +7232,7 @@
       if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==="k"){event.preventDefault();openGlobalSearchV400();return;}
       if(!typing&&event.key==="/"){event.preventDefault();openGlobalSearchV400();}
     });
-    if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=4.2.1-20260920").catch(()=>null),{once:true});}
+    if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=4.3.0-20260921").catch(()=>null),{once:true});}
   }
   window.addEventListener("DOMContentLoaded",initV400UiShell);
 
@@ -7716,15 +7798,27 @@
   }
 
   async function fetchLeaderboardV420() {
-    try { return await query(state.supabase.rpc("clipcontrol_leaderboard_v420")); }
-    catch (_) { return {top_clippers:[],top_videos:[]}; }
+    try {
+      const data = await query(state.supabase.rpc("clipcontrol_leaderboard_v430"));
+      data.top_clippers=(Array.isArray(data?.top_clippers)?data.top_clippers:[]).map(row=>({...row,profile:{id:row.user_id,username:row.username,names:row.display_name,avatar_url:row.avatar_url||""}}));
+      data.top_videos=(Array.isArray(data?.top_videos)?data.top_videos:[]).map(row=>({...row,profile:{id:row.user_id,username:row.username,names:row.clipper_name||row.username,avatar_url:row.avatar_url||""}}));
+      return data;
+    } catch (_) {
+      try { return await query(state.supabase.rpc("clipcontrol_leaderboard_v420")); }
+      catch (_) { return {top_clippers:[],top_videos:[]}; }
+    }
   }
 
   function leaderboardMarkupV420(data={}) {
     const clippers=Array.isArray(data?.top_clippers)?data.top_clippers:[], videos=Array.isArray(data?.top_videos)?data.top_videos:[];
-    const podium=clippers.map((row,index)=>`<div class="leader-row-v420 ${row.is_me?"is-me":""}"><b class="leader-place-v420">${index===0?"🥇":index===1?"🥈":index===2?"🥉":`#${index+1}`}</b><div><strong>${esc(row.display_name||row.username||"Clipero")}${row.is_me?' <em>Tú</em>':""}</strong><small>${num(row.videos||0)} videos</small></div><span>${num(row.views||0)}<small>vistas</small></span></div>`).join("");
-    const topVideos=videos.map((video,index)=>`<a class="leader-video-v420" href="${esc(video.url||"#")}" target="_blank" rel="noopener"><span class="leader-video-thumb-v420">${video.thumbnail_url?`<img src="${esc(video.thumbnail_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`:platformLogo(video.platform)}<b>${index+1}</b></span><div><strong>${esc(video.title||"Video destacado")}</strong><small>${esc(video.account_name||platformLabel(video.platform))}</small><em>${num(video.views||0)} vistas</em></div></a>`).join("");
-    return `<section class="motivation-grid-v420"><article class="card leaderboard-v420"><div class="section-title-row"><div><span class="section-eyebrow">CLASIFICACIÓN</span><h3>Top del período</h3><p>El rendimiento se actualiza con las métricas.</p></div><span class="trophy-v420">🏆</span></div><div class="leader-list-v420">${podium||'<div class="empty">Aún no hay clasificación.</div>'}</div></article><article class="card leaderboard-v420"><div class="section-title-row"><div><span class="section-eyebrow">CONTENIDO DESTACADO</span><h3>Videos que están rompiéndola</h3></div></div><div class="leader-videos-v420">${topVideos||'<div class="empty">Aún no hay videos destacados.</div>'}</div></article></section>`;
+    const podium=clippers.map((row,index)=>{
+      const rank=index+1, profile=row.profile||{names:row.display_name||row.username,username:row.username};
+      const medal=rank===1?"🥇":rank===2?"🥈":rank===3?"🥉":`#${rank}`;
+      const cls=rank<=3?` podium-${rank}-v430`:"";
+      return `<div class="leader-row-v420 leader-row-v430${cls} ${row.is_me?"is-me":""}"><b class="leader-place-v420">${medal}</b><span class="leader-avatar-v430">${avatarMarkupV400(profile,"sm")}${rank<=3?`<i>${rank===1?"★":rank===2?"◆":"●"}</i>`:""}</span><div class="leader-user-v430"><strong>${esc(row.display_name||row.username||"Clipero")}${row.is_me?' <em>Tú</em>':""}</strong>${row.username?`<small>@${esc(row.username)}</small>`:""}</div><span class="leader-views-v430">${num(row.views||0)}<small>vistas</small></span></div>`;
+    }).join("");
+    const topVideos=videos.map((video,index)=>{const owner=video.profile||{names:video.username||"Clipero",username:video.username};return `<a class="leader-video-v420" href="${esc(video.url||"#")}" target="_blank" rel="noopener"><span class="leader-video-thumb-v420">${video.thumbnail_url?`<img src="${esc(video.thumbnail_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`:platformLogo(video.platform)}<b>${index+1}</b><span class="leader-video-owner-v430" title="${esc(owner.names||owner.username||"Clipero")}">${avatarMarkupV400(owner,"sm")}</span></span><div><strong>${esc(video.title||"Video destacado")}</strong><small>${esc(video.account_name||platformLabel(video.platform))}</small><em>${num(video.views||0)} vistas</em></div></a>`;}).join("");
+    return `<section class="motivation-grid-v420"><article class="card leaderboard-v420 leaderboard-people-v430"><div class="section-title-row"><div><span class="section-eyebrow">CLASIFICACIÓN</span><h3>Top del período</h3><p>Ranking por vistas del período.</p></div><span class="trophy-v420">🏆</span></div><div class="leader-list-v420">${podium||'<div class="empty">Aún no hay clasificación.</div>'}</div></article><article class="card leaderboard-v420"><div class="section-title-row"><div><span class="section-eyebrow">CONTENIDO DESTACADO</span><h3>Videos que están rompiéndola</h3></div></div><div class="leader-videos-v420">${topVideos||'<div class="empty">Aún no hay videos destacados.</div>'}</div></article></section>`;
   }
 
   async function fetchMyFinalPaymentV420(report) {
@@ -7902,7 +7996,7 @@
     window.clipcontrolDebugFacebook = (url) => invokeProcessor({ action:"facebook_probe", url });
     window.clipcontrolDebugFrontend = () => ({
       version: CLIPCONTROL_FRONTEND_VERSION,
-      source: "app-v4.2.4-payment-distribution-rule-fix.js",
+      source: "app-v4.3.0-metric-review-ranking-polish.js",
       scripts: [...document.scripts].map((script) => script.src).filter(Boolean),
       samples: {
         facebook_reel: videoUrlValidation("https://www.facebook.com/reel/1579243183893033"),
