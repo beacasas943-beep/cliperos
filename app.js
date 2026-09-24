@@ -1,7 +1,7 @@
 (() => {
-  const CLIPCONTROL_FRONTEND_VERSION = "4.3.0-metric-review-ranking-polish";
+  const CLIPCONTROL_FRONTEND_VERSION = "4.3.1-stable-mobile-metrics-identity";
   window.CLIPCONTROL_FRONTEND_VERSION = CLIPCONTROL_FRONTEND_VERSION;
-  document.documentElement.dataset.clipcontrolUi = "4.3.0-metric-review-ranking";
+  document.documentElement.dataset.clipcontrolUi = "4.3.1-stable-mobile-metrics-identity";
   "use strict";
 
   const PLATFORMS = {
@@ -1861,13 +1861,11 @@
             const validation = videoUrlValidation(videoUrl, account.platform);
             if (!validation.ok) throw new Error(validation.reason);
             if (!adminMode && !clipperUploadEnabledV320()) throw new Error("Tu acceso para modificar clips está bloqueado por un pago pendiente.");
-            await query(state.supabase.from("videos").update({
-              account_id: accountId,
-              video_url: validation.url,
-              metrics_status: "pending",
-              metrics_error: null,
-              metrics_next_check_at: new Date().toISOString(),
-            }).eq("id", video.id));
+            await query(state.supabase.rpc("update_video_identity_v425", {
+              p_video_id: video.id,
+              p_account_id: accountId,
+              p_video_url: validation.url,
+            }));
             closeModal();
             toast("Video actualizado. Detectando métricas…", "success");
             await syncVideoMetrics(video.id, true);
@@ -3464,14 +3462,15 @@
 
   async function renderPage(force=false) {
     if(!state.profile)return;
-    showLoading(true);
+    const content=$("#content");
+    content?.setAttribute("aria-busy","true");
     try{
       await loadGlobalContext();
       const isAdmin=["admin","superadmin"].includes(state.profile.role);
       if(isAdmin)await renderAdminPage();else await renderClipperPage();
-      buildNav();animateDynamicNumbers($("#content"));await refreshAnnouncementBadge();
-    }catch(error){console.error(error);$("#content").innerHTML=`<div class="alert alert-danger"><div>⚠️</div><div><strong>No se pudo cargar esta sección</strong><p>${esc(errorMessage(error))}</p></div></div>`;toast(errorMessage(error),"error");}
-    finally{showLoading(false);}
+      buildNav();animateDynamicNumbers(content);await refreshAnnouncementBadge();
+    }catch(error){console.error(error);if(content)content.innerHTML=`<div class="alert alert-danger"><div>⚠️</div><div><strong>No se pudo cargar esta sección</strong><p>${esc(errorMessage(error))}</p></div></div>`;toast(errorMessage(error),"error");}
+    finally{content?.removeAttribute("aria-busy");}
   }
 
   async function saveProfileV20(f) {
@@ -3964,9 +3963,9 @@
     };
   }
 
-  function hasMetricIncrease(previous, next) {
+  function hasMetricChange(previous, next) {
     if (!previous) return false;
-    return next.views > previous.views || next.likes > previous.likes || next.comments > previous.comments || next.shares > previous.shares;
+    return next.views !== previous.views || next.likes !== previous.likes || next.comments !== previous.comments || next.shares !== previous.shares;
   }
 
   async function seedLiveMetricCache() {
@@ -4015,16 +4014,11 @@
     if (!row.id) return false;
     const next = metricTuple(row);
     const previous = state.liveVideoMetricCache.get(row.id);
-    state.liveVideoMetricCache.set(row.id, previous ? {
-      views: Math.max(previous.views, next.views),
-      likes: Math.max(previous.likes, next.likes),
-      comments: Math.max(previous.comments, next.comments),
-      shares: Math.max(previous.shares, next.shares),
-    } : next);
+    state.liveVideoMetricCache.set(row.id, next);
 
     // Los cambios syncing/error/checked_at/next_check_at no redibujan la pantalla.
-    // Solo una subida real de una métrica provoca actualización visual.
-    return hasMetricIncrease(previous, next);
+    // Una corrección válida hacia abajo también debe reflejarse visualmente.
+    return hasMetricChange(previous, next);
   }
 
   function shouldRefreshReportPayload(payload) {
@@ -4039,6 +4033,20 @@
     return previousStatus !== undefined && nextStatus !== previousStatus;
   }
 
+  async function renderLiveSilently(renderer) {
+    const content = $("#content");
+    const scrollY = window.scrollY;
+    content?.classList.add("cc-silent-refresh");
+    try {
+      await renderer();
+    } finally {
+      requestAnimationFrame(() => {
+        content?.classList.remove("cc-silent-refresh");
+        if (Math.abs(window.scrollY - scrollY) > 12) window.scrollTo({ top: scrollY, behavior: "auto" });
+      });
+    }
+  }
+
   function queueLiveRefresh(table="videos", payload=null) {
     if (table === "videos" && payload && !shouldRefreshVideoPayload(payload)) return;
     if (table === "weekly_reports" && payload && !shouldRefreshReportPayload(payload)) return;
@@ -4051,17 +4059,23 @@
       try{
         if(state.profile.role==="clipper"&&["dashboard","videos"].includes(state.page)){
           await loadClipperCurrentData();
-          state.page==="dashboard"?renderClipperDashboardV300():renderClipperVideosV240();
+          await renderLiveSilently(async()=>{
+            if(state.page==="dashboard") await renderClipperDashboardV420();
+            else renderClipperVideosV400();
+          });
           await seedLiveMetricCache();
         }else if(["admin","superadmin"].includes(state.profile.role)&&(state.page==="dashboard"||state.page==="reports")){
           await loadGlobalContext();
-          await renderAdminReports();
+          await renderLiveSilently(async()=>{
+            if(state.page==="dashboard") await renderAdminDashboardV400();
+            else await renderAdminReportsV300();
+          });
           await seedLiveMetricCache();
         }
         if(table==="announcements")await refreshAnnouncementBadge();
       }catch(error){console.warn("Realtime refresh omitido",error);}
       finally{state.liveDirtyTables?.clear();}
-    },900);
+    },1600);
   }
 
   async function startLiveRealtime() {
@@ -4098,7 +4112,7 @@
   function startLiveMetricsEngine() {
     if(state.liveMetricTimer)clearInterval(state.liveMetricTimer);
     const minutes=Math.max(Number(state.settings?.metrics_live_interval_minutes||15),5);
-    setTimeout(()=>runLiveMetricSync(true),2500);
+    setTimeout(()=>runLiveMetricSync(true),4500);
     state.liveMetricTimer=setInterval(()=>runLiveMetricSync(true),minutes*60*1000);
   }
 
@@ -7232,7 +7246,7 @@
       if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==="k"){event.preventDefault();openGlobalSearchV400();return;}
       if(!typing&&event.key==="/"){event.preventDefault();openGlobalSearchV400();}
     });
-    if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=4.3.0-20260921").catch(()=>null),{once:true});}
+    if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js?v=4.3.1-20260923").catch(()=>null),{once:true});}
   }
   window.addEventListener("DOMContentLoaded",initV400UiShell);
 
@@ -7988,6 +8002,11 @@
   window.addEventListener("DOMContentLoaded",ensureResponsiveShellV420);
 
 
+  // Operaciones puntuales para validación post-deploy. La Edge valida sesión y rol.
+  window.clipcontrolHealth = () => invokeProcessor({ action:"health" });
+  window.clipcontrolProbeFacebook = (url) => invokeProcessor({ action:"probe_metrics", platform:"facebook", url });
+  window.clipcontrolSyncOne = (videoId) => invokeProcessor({ action:"sync_metrics", video_id:videoId });
+
   // Herramientas de diagnóstico solo cuando debug=true en supabase-config.js.
   if (window.CLIPCONTROL_SUPABASE?.debug === true) {
     window.clipcontrolDebugUI = () => ({version:CLIPCONTROL_FRONTEND_VERSION, ui:document.documentElement.dataset.clipcontrolUi, page:state.page, role:state.profile?.role});
@@ -7996,7 +8015,7 @@
     window.clipcontrolDebugFacebook = (url) => invokeProcessor({ action:"facebook_probe", url });
     window.clipcontrolDebugFrontend = () => ({
       version: CLIPCONTROL_FRONTEND_VERSION,
-      source: "app-v4.3.0-metric-review-ranking-polish.js",
+      source: "app-v4.3.1-stable-mobile-metrics-identity.js",
       scripts: [...document.scripts].map((script) => script.src).filter(Boolean),
       samples: {
         facebook_reel: videoUrlValidation("https://www.facebook.com/reel/1579243183893033"),
@@ -8012,11 +8031,3 @@
   window.addEventListener("DOMContentLoaded", init);
 
 })();
-
-
-
-
-
-
-
-
