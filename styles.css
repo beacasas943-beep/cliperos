@@ -130,7 +130,7 @@ label{display:grid;gap:7px;font-size:13px;font-weight:800}input,select,textarea{
   --shadow:0 18px 55px rgba(15,23,42,.09);--radius:20px;--sidebar:248px;
 }
 html{background:var(--bg)}
-body{font-family:"Plus Jakarta Sans",Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:-.01em;background:radial-gradient(circle at 80% -10%,rgba(124,108,247,.08),transparent 30%),var(--bg)}
+body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;letter-spacing:-.01em;background:radial-gradient(circle at 80% -10%,rgba(124,108,247,.08),transparent 30%),var(--bg)}
 body.theme-dark{
   --bg:#0c111b;--surface:#121925;--surface-2:#171f2d;--surface-3:#20283a;
   --text:#eef2ff;--muted:#9ca3af;--muted-2:#64748b;--line:#263244;
@@ -563,7 +563,7 @@ body.theme-dark{
   --cc22-shadow-soft:0 10px 26px rgba(0,0,0,.22);
 }
 html,body{max-width:100%;overflow-x:clip}
-body{background:var(--cc22-bg);color:var(--cc22-text);font-family:"Plus Jakarta Sans",Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+body{background:var(--cc22-bg);color:var(--cc22-text);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
 svg{display:block}
 button, input, select, textarea{font-family:inherit}
 
@@ -1456,7 +1456,7 @@ body:not(.theme-dark) .topbar{background:rgba(255,255,255,.94)}
   --v400-primary-soft:#eef0ff;--v400-green:#178653;--v400-green-soft:#eaf8f0;
   --v400-amber:#b66908;--v400-red:#c33d4b;--v400-radius:16px;
 }
-body{font-family:"Plus Jakarta Sans",Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif!important;background:var(--v400-bg);color:var(--v400-text);overflow-x:hidden}
+body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif!important;background:var(--v400-bg);color:var(--v400-text);overflow-x:hidden}
 body.theme-dark{--v400-bg:#0b111c;--v400-card:#121a29;--v400-text:#eef2f8;--v400-muted:#9aa8bd;--v400-border:#263249;--v400-primary-soft:#24254d;--v400-green-soft:#132e23}
 body.modal-open-v400{overflow:hidden}
 .content{font-size:14px!important;line-height:1.45}.content p,.content label,.content input,.content select,.content textarea,.content td{font-size:13px!important}.content small{font-size:11px!important}.content .btn{min-height:40px;font-size:12px!important}.section-eyebrow{display:block;font-size:11px!important;line-height:1.2;font-weight:900;letter-spacing:.09em;color:var(--v400-primary);text-transform:uppercase}.card{border-radius:var(--v400-radius)!important;border-color:var(--v400-border)!important}
@@ -1490,7 +1490,7 @@ body.modal-open-v400{overflow:hidden}
 .mobile-sheet-v400{max-height:85dvh!important}.more-sheet-v400{display:grid;gap:7px}.more-sheet-v400>button{width:100%;min-height:50px;border:0;border-radius:12px;background:var(--v400-bg);color:var(--v400-text);display:grid;grid-template-columns:28px minmax(0,1fr) 20px;align-items:center;text-align:left;padding:8px 12px;font-size:13px;font-weight:800}.more-sheet-v400>button.danger{color:var(--v400-red);background:#fff2f3}.more-profile-v400{display:flex;align-items:center;gap:10px;border-top:1px solid var(--v400-border);border-bottom:1px solid var(--v400-border);padding:12px 5px;margin:5px 0}.more-profile-v400 b,.more-profile-v400 small{display:block}.more-profile-v400 b{font-size:12px}.more-profile-v400 small{color:var(--v400-muted)}.command-search-v400{position:relative;display:grid!important;grid-template-columns:22px minmax(0,1fr) auto;align-items:center;gap:8px;border:1px solid var(--v400-border);border-radius:14px;padding:0 12px;background:var(--v400-bg)}.command-search-v400 input{border:0!important;box-shadow:none!important;background:transparent!important;min-height:50px!important;padding:0!important;font-size:13px!important}.command-results-v400{display:grid;gap:6px;margin-top:12px}.command-hint-v400{padding:24px;text-align:center;color:var(--v400-muted);font-size:12px}.command-user-result-v400,.command-video-result-v400{border:1px solid transparent;background:transparent;color:var(--v400-text);border-radius:12px;display:grid;grid-template-columns:auto minmax(0,1fr) auto 18px;align-items:center;gap:10px;padding:9px;text-align:left;text-decoration:none}.command-user-result-v400:hover,.command-video-result-v400:hover{background:var(--v400-bg);border-color:var(--v400-border)}.command-user-result-v400 span b,.command-user-result-v400 span small,.command-video-result-v400 span b,.command-video-result-v400 span small{display:block}.command-user-result-v400 span b,.command-video-result-v400 span b{font-size:12px}.command-user-result-v400 em{font-size:10.5px;font-style:normal;color:var(--v400-muted);white-space:nowrap}
 
 /* Export visual */
-.export-report-v400{width:1240px;background:#f5f7fb;color:#182238;padding:42px;font-family:"Plus Jakarta Sans",Arial,sans-serif}.export-report-v400 header{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;padding:25px 28px;border-radius:20px;background:#17233c;color:#fff}.export-report-v400 header span{font-size:12px;font-weight:900;letter-spacing:.12em;color:#b9c4d8}.export-report-v400 header h1{font-size:26px;margin:5px 0}.export-report-v400 header p{font-size:12px;margin:0;color:#c5cedc}.export-report-v400 header>b{font-size:28px;color:#8de0b2}.export-kpis-v400{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0}.export-kpis-v400>div{background:#fff;border:1px solid #e4e9f1;border-radius:14px;padding:15px}.export-kpis-v400 small{display:block;color:#667085;font-size:10px;font-weight:850}.export-kpis-v400 strong{display:block;font-size:22px;margin-top:5px}.export-table-v400{background:#fff;border:1px solid #e4e9f1;border-radius:16px;overflow:hidden}.export-table-v400 table{width:100%;min-width:0}.export-table-v400 th{background:#eef1f6;color:#465066;font-size:9px;padding:11px}.export-table-v400 td{font-size:11px;padding:10px;border-bottom:1px solid #edf0f5}.export-person-v400{display:flex;align-items:center;gap:8px}.export-person-v400 .avatar-v400{width:32px;height:32px}.export-pay-v400{color:#178653;font-weight:950}.export-report-v400 footer{text-align:right;margin-top:12px;color:#7a8495;font-size:9px}
+.export-report-v400{width:1240px;background:#f5f7fb;color:#182238;padding:42px;font-family:Arial,system-ui,sans-serif}.export-report-v400 header{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;padding:25px 28px;border-radius:20px;background:#17233c;color:#fff}.export-report-v400 header span{font-size:12px;font-weight:900;letter-spacing:.12em;color:#b9c4d8}.export-report-v400 header h1{font-size:26px;margin:5px 0}.export-report-v400 header p{font-size:12px;margin:0;color:#c5cedc}.export-report-v400 header>b{font-size:28px;color:#8de0b2}.export-kpis-v400{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0}.export-kpis-v400>div{background:#fff;border:1px solid #e4e9f1;border-radius:14px;padding:15px}.export-kpis-v400 small{display:block;color:#667085;font-size:10px;font-weight:850}.export-kpis-v400 strong{display:block;font-size:22px;margin-top:5px}.export-table-v400{background:#fff;border:1px solid #e4e9f1;border-radius:16px;overflow:hidden}.export-table-v400 table{width:100%;min-width:0}.export-table-v400 th{background:#eef1f6;color:#465066;font-size:9px;padding:11px}.export-table-v400 td{font-size:11px;padding:10px;border-bottom:1px solid #edf0f5}.export-person-v400{display:flex;align-items:center;gap:8px}.export-person-v400 .avatar-v400{width:32px;height:32px}.export-pay-v400{color:#178653;font-weight:950}.export-report-v400 footer{text-align:right;margin-top:12px;color:#7a8495;font-size:9px}
 
 /* Tema oscuro V400 */
 body.theme-dark .top-search-v400,body.theme-dark .payment-table-v400,body.theme-dark .kpi-grid-v400 article,body.theme-dark .payment-kpis-v400 article,body.theme-dark .clipper-kpis-v400 article,body.theme-dark .history-card-v400,body.theme-dark .quick-actions-v400 button,body.theme-dark .clipper-actions-v400 button{background:var(--v400-card)!important;border-color:var(--v400-border)!important;color:var(--v400-text)!important}body.theme-dark .attention-card-v400,body.theme-dark .clipper-account-grid-v400>article,body.theme-dark .history-card-v400 p,body.theme-dark .more-sheet-v400>button{background:#151f30!important;border-color:var(--v400-border)!important}body.theme-dark .payment-table-v400 th{background:#172236!important;color:#b4bfd0!important}
@@ -1823,7 +1823,73 @@ body.modal-open-v400{overflow:hidden}
 }
 @media(prefers-reduced-motion:reduce){.podium-1-v430:before,.podium-1-v430:after,.podium-1-v430 .leader-avatar-v430>i{animation:none!important}}
 
-/* 4.3.1 — refrescos LIVE silenciosos: evita parpadeo/reentrada de animaciones */
+/* Refrescos Realtime silenciosos: evita parpadeo/reentrada de animaciones */
 .content.cc-silent-refresh > *,
 .content.cc-silent-refresh * { animation-duration: 0s !important; animation-delay: 0s !important; }
 
+
+/* ================================================================
+   ClipControl · Mobile performance mode
+   Reduce GPU-heavy effects on phones without changing desktop UI.
+   ================================================================ */
+@media (max-width:1180px), (pointer:coarse) {
+  html.cc-mobile-perf body { font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif !important; }
+  html.cc-mobile-perf .content > * { animation:none !important; }
+  html.cc-mobile-perf .topbar,
+  html.cc-mobile-perf .mobile-nav,
+  html.cc-mobile-perf .modal-backdrop,
+  html.cc-mobile-perf .sidebar-scrim-v420,
+  html.cc-mobile-perf .video-row-platform,
+  html.cc-mobile-perf .video-row-check,
+  html.cc-mobile-perf .creator-pay-total {
+    -webkit-backdrop-filter:none !important;
+    backdrop-filter:none !important;
+  }
+  html.cc-mobile-perf .topbar { background:var(--v400-card,#111a2a) !important; }
+  html.cc-mobile-perf .mobile-nav {
+    background:#111a2a !important;
+    box-shadow:0 6px 18px rgba(2,8,23,.22) !important;
+  }
+  html.cc-mobile-perf .modal-backdrop { background:rgba(3,8,20,.78) !important; }
+  html.cc-mobile-perf .sidebar-scrim-v420 { background:rgba(3,8,20,.70) !important; }
+  html.cc-mobile-perf .card,
+  html.cc-mobile-perf [class*="-card-v4"],
+  html.cc-mobile-perf [class*="-card-v42"],
+  html.cc-mobile-perf .live-platform-card,
+  html.cc-mobile-perf .live-paid-card,
+  html.cc-mobile-perf .live-hero {
+    box-shadow:0 2px 10px rgba(2,8,23,.10) !important;
+  }
+  html.cc-mobile-perf .content,
+  html.cc-mobile-perf .main { transform:none !important; }
+  html.cc-mobile-perf * { scroll-behavior:auto !important; }
+  html.cc-mobile-perf .cc-silent-refresh,
+  html.cc-mobile-perf .cc-silent-refresh * { animation:none !important; transition:none !important; }
+}
+
+
+/* ================================================================
+   ClipControl 4.4 · Mobile interaction fast path
+   ================================================================ */
+@media (max-width:1180px), (pointer:coarse) {
+  html.cc-mobile-perf button,
+  html.cc-mobile-perf a,
+  html.cc-mobile-perf [role="button"],
+  html.cc-mobile-perf input,
+  html.cc-mobile-perf select,
+  html.cc-mobile-perf textarea { touch-action:manipulation; }
+  html.cc-mobile-perf button,
+  html.cc-mobile-perf .btn,
+  html.cc-mobile-perf .nav button,
+  html.cc-mobile-perf .mobile-nav button,
+  html.cc-mobile-perf .card { transition-duration:.08s !important; }
+  html.cc-mobile-perf .card:hover,
+  html.cc-mobile-perf .btn:hover,
+  html.cc-mobile-perf [class*="-card-"]:hover { transform:none !important; }
+  html.cc-mobile-perf .content { overscroll-behavior-y:contain; }
+  html.cc-mobile-perf img[loading="lazy"],
+  html.cc-mobile-perf iframe[loading="lazy"] { content-visibility:auto; }
+}
+@media (prefers-reduced-motion:reduce) {
+  *,*::before,*::after { scroll-behavior:auto !important; animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; }
+}
